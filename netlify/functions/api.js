@@ -255,7 +255,10 @@ export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: CORS, body: "" };
 
   const method = event.httpMethod;
-  const rawPath = event.path.replace(/^\/.netlify\/functions\/api\/?/, "").replace(/^api\/?/, "");
+  const rawPath = event.path
+    .replace(/^\/.netlify\/functions\/api/, "")
+    .replace(/^\/api/, "")
+    .replace(/^\//, "");
   const segments = rawPath.split("/").filter(Boolean);
   const body = parseBody(event);
   const query = event.queryStringParameters || {};
