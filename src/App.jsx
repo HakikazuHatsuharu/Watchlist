@@ -240,17 +240,34 @@ function ChatPanel({ listId, user, members, lang, onClose }) {
 
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
 function AuthScreen({ onLogin, lang, setLang }) {
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState("login"); // "login" | "register" | "forgot"
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const reset = () => { setError(""); setSuccess(""); };
+
   const submit = async () => {
+    if (mode === "forgot") {
+      if (!email.trim()) { setError(t(lang, "email_required")); return; }
+      setError(""); setLoading(true);
+      try {
+        await api.forgotPassword(email.trim());
+        setSuccess(t(lang, "reset_sent"));
+      } catch (e) { setError(e.message); }
+      finally { setLoading(false); }
+      return;
+    }
     if (!username.trim() || !password) { setError(t(lang, "fill_fields")); return; }
+    if (mode === "register" && !email.trim()) { setError(t(lang, "email_required")); return; }
     setError(""); setLoading(true);
     try {
-      const user = mode === "register" ? await api.register(username.trim(), password) : await api.login(username.trim(), password);
+      const user = mode === "register"
+        ? await api.register(username.trim(), email.trim(), password)
+        : await api.login(username.trim(), password);
       onLogin(user);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -260,25 +277,72 @@ function AuthScreen({ onLogin, lang, setLang }) {
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ position: "fixed", top: 16, right: 16 }}><LangToggle lang={lang} setLang={setLang} /></div>
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: "36px 32px", width: "100%", maxWidth: 360 }}>
+
+        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 38, marginBottom: 8 }}>🎞</div>
           <h1 style={{ margin: "0 0 4px", fontFamily: "'Playfair Display',serif", fontSize: 24, background: `linear-gradient(90deg,${C.gold},#F5D688)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Watchlist</h1>
-          <p style={{ margin: 0, color: C.muted, fontSize: 13 }}>{mode === "login" ? t(lang, "tagline_login") : t(lang, "tagline_register")}</p>
+          <p style={{ margin: 0, color: C.muted, fontSize: 13 }}>
+            {mode === "login" ? t(lang, "tagline_login") : mode === "register" ? t(lang, "tagline_register") : t(lang, "forgot_desc")}
+          </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div><label style={LB}>{t(lang, "username")}</label><input value={username} onChange={(e) => setUsername(e.target.value)} style={IS} placeholder="ex: alice" /></div>
-          <div><label style={LB}>{t(lang, "password")}</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={IS} placeholder="••••••••" /></div>
-          {error && <p style={{ color: C.danger, fontSize: 12, margin: 0, background: "rgba(248,113,113,0.08)", padding: "7px 10px", borderRadius: 8 }}>⚠ {error}</p>}
-          <button onClick={submit} disabled={loading} style={{ ...BP, width: "100%", marginTop: 4, opacity: loading ? 0.7 : 1 }}>
-            {loading ? "…" : mode === "login" ? t(lang, "login") : t(lang, "register")}
-          </button>
-        </div>
-        <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 20, marginBottom: 0 }}>
-          {mode === "login" ? t(lang, "no_account") + " " : t(lang, "has_account") + " "}
-          <span onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ color: C.gold, cursor: "pointer", fontWeight: 600 }}>
-            {mode === "login" ? t(lang, "register") : t(lang, "login")}
-          </span>
-        </p>
+
+        {/* Forgot password form */}
+        {mode === "forgot" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div><label style={LB}>{t(lang, "email")}</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={IS} placeholder={t(lang, "email_placeholder")} autoFocus />
+            </div>
+            {error && <p style={{ color: C.danger, fontSize: 12, margin: 0, background: "rgba(248,113,113,0.08)", padding: "7px 10px", borderRadius: 8 }}>⚠ {error}</p>}
+            {success && <p style={{ color: C.success, fontSize: 12, margin: 0, background: "rgba(16,185,129,0.08)", padding: "7px 10px", borderRadius: 8 }}>✓ {success}</p>}
+            {!success && (
+              <button onClick={submit} disabled={loading} style={{ ...BP, width: "100%", opacity: loading ? 0.7 : 1 }}>
+                {loading ? "…" : t(lang, "send_reset")}
+              </button>
+            )}
+            <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 0 }}>
+              <span onClick={() => { setMode("login"); reset(); }} style={{ color: C.gold, cursor: "pointer", fontWeight: 600 }}>
+                ← {t(lang, "back_to_login")}
+              </span>
+            </p>
+          </div>
+        ) : (
+          /* Login / Register form */
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div><label style={LB}>{t(lang, "username")}</label>
+                <input value={username} onChange={(e) => setUsername(e.target.value)} style={IS} placeholder="ex: alice" autoFocus />
+              </div>
+              {mode === "register" && (
+                <div><label style={LB}>{t(lang, "email")}</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={IS} placeholder={t(lang, "email_placeholder")} />
+                </div>
+              )}
+              <div><label style={LB}>{t(lang, "password")}</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={IS} placeholder="••••••••" />
+              </div>
+              {error && <p style={{ color: C.danger, fontSize: 12, margin: 0, background: "rgba(248,113,113,0.08)", padding: "7px 10px", borderRadius: 8 }}>⚠ {error}</p>}
+              <button onClick={submit} disabled={loading} style={{ ...BP, width: "100%", marginTop: 4, opacity: loading ? 0.7 : 1 }}>
+                {loading ? "…" : mode === "login" ? t(lang, "login") : t(lang, "register")}
+              </button>
+            </div>
+
+            {mode === "login" && (
+              <p style={{ textAlign: "center", fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+                <span onClick={() => { setMode("forgot"); reset(); }} style={{ color: C.muted, cursor: "pointer", textDecoration: "underline" }}>
+                  {t(lang, "forgot_password")}
+                </span>
+              </p>
+            )}
+
+            <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 14, marginBottom: 0 }}>
+              {mode === "login" ? t(lang, "no_account") + " " : t(lang, "has_account") + " "}
+              <span onClick={() => { setMode(mode === "login" ? "register" : "login"); reset(); }} style={{ color: C.gold, cursor: "pointer", fontWeight: 600 }}>
+                {mode === "login" ? t(lang, "register") : t(lang, "login")}
+              </span>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

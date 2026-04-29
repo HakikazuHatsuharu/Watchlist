@@ -4,24 +4,27 @@ import { ok, err, unauthorized, notFound, parseBody, route, CORS } from "./_util
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function genId() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
 function genCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
-const fakeEmail = (u) => `${u.toLowerCase().replace(/[^a-z0-9]/g, "")}@watchlist.app`;
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
-// POST /api/auth/register
-async function register({ username, password }) {
-  if (!username?.trim() || !password) return err("Missing fields");
+// POST /api/auth/register  { username, email, password }
+async function register({ username, email, password }) {
+  if (!username?.trim() || !password || !email?.trim()) return err("Missing fields");
   const uname = username.trim();
+  const mail = email.trim().toLowerCase();
 
-  // Check uniqueness via existing users
+  // Check username uniqueness
   const { data: existing } = await db.auth.admin.listUsers();
   const taken = existing?.users?.some(
     (u) => u.user_metadata?.username?.toLowerCase() === uname.toLowerCase()
   );
   if (taken) return err("Ce nom d'utilisateur est déjà pris. / Username already taken.");
 
+  const emailTaken = existing?.users?.some((u) => u.email === mail);
+  if (emailTaken) return err("Cet email est déjà utilisé. / Email already in use.");
+
   const { data, error } = await db.auth.admin.createUser({
-    email: fakeEmail(uname),
+    email: mail,
     password,
     user_metadata: { username: uname },
     email_confirm: true,
@@ -30,29 +33,49 @@ async function register({ username, password }) {
 
   // Sign in immediately to get a session token
   const { data: session, error: signErr } = await db.auth.signInWithPassword({
-    email: fakeEmail(uname), password,
+    email: mail, password,
   });
   if (signErr) return err(signErr.message);
 
   return ok({
-    user: { id: data.user.id, username: uname },
+    user: { id: data.user.id, username: uname, email: mail },
     token: session.session.access_token,
     refreshToken: session.session.refresh_token,
   }, 201);
 }
 
-// POST /api/auth/login
+// POST /api/auth/login  { username, password }
 async function login({ username, password }) {
   if (!username?.trim() || !password) return err("Missing fields");
+
+  // Find user by username to get their real email
+  const { data: existing } = await db.auth.admin.listUsers();
+  const found = existing?.users?.find(
+    (u) => u.user_metadata?.username?.toLowerCase() === username.trim().toLowerCase()
+  );
+  if (!found) return err("Nom d'utilisateur ou mot de passe incorrect. / Wrong credentials.", 401);
+
   const { data, error } = await db.auth.signInWithPassword({
-    email: fakeEmail(username.trim()), password,
+    email: found.email, password,
   });
   if (error) return err("Nom d'utilisateur ou mot de passe incorrect. / Wrong credentials.", 401);
   return ok({
-    user: { id: data.user.id, username: data.user.user_metadata?.username || username },
+    user: { id: data.user.id, username: data.user.user_metadata?.username || username, email: found.email },
     token: data.session.access_token,
     refreshToken: data.session.refresh_token,
   });
+}
+
+// POST /api/auth/forgot-password  { email }
+async function forgotPassword({ email }) {
+  if (!email?.trim()) return err("Email required");
+  // We use Supabase's built-in password reset — sends email automatically
+  const { error } = await db.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: process.env.SITE_URL + "/reset-password",
+  });
+  // Always return ok to avoid email enumeration
+  if (error) console.error("Reset error:", error.message);
+  return ok({ sent: true });
 }
 
 // POST /api/auth/refresh
@@ -269,6 +292,7 @@ export const handler = async (event) => {
       if (method === "POST" && segments[1] === "register") return await register(body);
       if (method === "POST" && segments[1] === "login") return await login(body);
       if (method === "POST" && segments[1] === "refresh") return await refreshSession(body);
+      if (method === "POST" && segments[1] === "forgot-password") return await forgotPassword(body);
       return notFound();
     }
 

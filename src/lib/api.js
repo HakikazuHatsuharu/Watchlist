@@ -64,8 +64,8 @@ const put = (path, body) => apiFetch(path, { method: "PUT", body });
 const del = (path) => apiFetch(path, { method: "DELETE" });
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-export async function register(username, password) {
-  const data = await post("/auth/register", { username, password });
+export async function register(username, email, password) {
+  const data = await post("/auth/register", { username, email, password });
   saveSession(data.token, data.refreshToken);
   saveUser(data.user);
   return data.user;
@@ -75,6 +75,9 @@ export async function login(username, password) {
   saveSession(data.token, data.refreshToken);
   saveUser(data.user);
   return data.user;
+}
+export async function forgotPassword(email) {
+  return post("/auth/forgot-password", { email });
 }
 export function logout() {
   clearSession();
