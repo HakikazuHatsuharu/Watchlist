@@ -1,282 +1,396 @@
 import { db, verifyToken } from "./_utils/supabase.js";
-import { ok, err, unauthorized, notFound, parseBody, route, CORS } from "./_utils/http.js";
+import { ok, err, unauthorized, notFound, parseBody, CORS } from "./_utils/http.js";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function genId() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
-function genCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+function genId() { return Math.random().toString(36).slice(2,9) + Date.now().toString(36); }
+function genCode() { return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
-// ─── Route handlers ───────────────────────────────────────────────────────────
+// ─── Global role helpers ────────────────────────────────────────────────────────
+const ROLE_LEVELS = { superadmin:5, admin:4, moderator:3, vip:2, user:1 };
+function canModerate(role) { return ROLE_LEVELS[role] >= 3; }
+function canAdmin(role)    { return ROLE_LEVELS[role] >= 4; }
 
-// POST /api/auth/register  { username, email, password }
+async function getGlobalRole(userId) {
+  const { data } = await db.from("profiles").select("global_role").eq("id", userId).single();
+  return data?.global_role || "user";
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 async function register({ username, email, password }) {
   if (!username?.trim() || !password || !email?.trim()) return err("Missing fields");
-  const uname = username.trim();
-  const mail = email.trim().toLowerCase();
-
-  // Check username uniqueness
+  const uname = username.trim(); const mail = email.trim().toLowerCase();
   const { data: existing } = await db.auth.admin.listUsers();
-  const taken = existing?.users?.some(
-    (u) => u.user_metadata?.username?.toLowerCase() === uname.toLowerCase()
-  );
-  if (taken) return err("Ce nom d'utilisateur est déjà pris. / Username already taken.");
-
-  const emailTaken = existing?.users?.some((u) => u.email === mail);
-  if (emailTaken) return err("Cet email est déjà utilisé. / Email already in use.");
-
-  const { data, error } = await db.auth.admin.createUser({
-    email: mail,
-    password,
-    user_metadata: { username: uname },
-    email_confirm: true,
-  });
+  if (existing?.users?.some(u => u.user_metadata?.username?.toLowerCase() === uname.toLowerCase()))
+    return err("Ce nom d'utilisateur est déjà pris.");
+  if (existing?.users?.some(u => u.email === mail))
+    return err("Cet email est déjà utilisé.");
+  const { data, error } = await db.auth.admin.createUser({ email: mail, password, user_metadata: { username: uname }, email_confirm: true });
   if (error) return err(error.message);
-
-  // Sign in immediately to get a session token
-  const { data: session, error: signErr } = await db.auth.signInWithPassword({
-    email: mail, password,
-  });
-  if (signErr) return err(signErr.message);
-
-  return ok({
-    user: { id: data.user.id, username: uname, email: mail },
-    token: session.session.access_token,
-    refreshToken: session.session.refresh_token,
-  }, 201);
+  // Create profile
+  await db.from("profiles").insert({ id: data.user.id, username: uname, avatar_url: "", bio: "" });
+  const { data: session, error: sErr } = await db.auth.signInWithPassword({ email: mail, password });
+  if (sErr) return err(sErr.message);
+  return ok({ user: { id: data.user.id, username: uname, email: mail }, token: session.session.access_token, refreshToken: session.session.refresh_token }, 201);
 }
 
-// POST /api/auth/login  { username, password }
 async function login({ username, password }) {
   if (!username?.trim() || !password) return err("Missing fields");
-
-  // Find user by username to get their real email
   const { data: existing } = await db.auth.admin.listUsers();
-  const found = existing?.users?.find(
-    (u) => u.user_metadata?.username?.toLowerCase() === username.trim().toLowerCase()
-  );
-  if (!found) return err("Nom d'utilisateur ou mot de passe incorrect. / Wrong credentials.", 401);
-
-  const { data, error } = await db.auth.signInWithPassword({
-    email: found.email, password,
-  });
-  if (error) return err("Nom d'utilisateur ou mot de passe incorrect. / Wrong credentials.", 401);
-  return ok({
-    user: { id: data.user.id, username: data.user.user_metadata?.username || username, email: found.email },
-    token: data.session.access_token,
-    refreshToken: data.session.refresh_token,
-  });
+  const found = existing?.users?.find(u => u.user_metadata?.username?.toLowerCase() === username.trim().toLowerCase());
+  if (!found) return err("Identifiants incorrects.", 401);
+  const { data, error } = await db.auth.signInWithPassword({ email: found.email, password });
+  if (error) return err("Identifiants incorrects.", 401);
+  return ok({ user: { id: data.user.id, username: data.user.user_metadata?.username || username, email: found.email }, token: data.session.access_token, refreshToken: data.session.refresh_token });
 }
 
-// POST /api/auth/forgot-password  { email }
+async function refreshSession({ refreshToken }) {
+  if (!refreshToken) return err("Missing token");
+  const { data, error } = await db.auth.refreshSession({ refresh_token: refreshToken });
+  if (error) return err("Session expired", 401);
+  return ok({ token: data.session.access_token, refreshToken: data.session.refresh_token });
+}
+
 async function forgotPassword({ email }) {
   if (!email?.trim()) return err("Email required");
-  // We use Supabase's built-in password reset — sends email automatically
-  const { error } = await db.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: process.env.SITE_URL + "/reset-password",
-  });
-  // Always return ok to avoid email enumeration
-  if (error) console.error("Reset error:", error.message);
+  await db.auth.resetPasswordForEmail(email.trim(), { redirectTo: process.env.SITE_URL + "/reset-password" });
   return ok({ sent: true });
 }
 
-// POST /api/auth/refresh
-async function refreshSession({ refreshToken }) {
-  if (!refreshToken) return err("Missing refresh token");
-  const { data, error } = await db.auth.refreshSession({ refresh_token: refreshToken });
-  if (error) return err("Session expired", 401);
+// ─── Profiles ─────────────────────────────────────────────────────────────────
+async function getProfile(id) {
+  const { data, error } = await db.from("profiles").select("*").eq("id", id).single();
+  if (error || !data) return notFound();
+  return ok(data);
+}
+
+// GET /api/profiles/:id/public — full public profile with stats + lists
+async function getPublicProfile(id) {
+  const { data: profile } = await db.from("profiles").select("*").eq("id", id).single();
+  if (!profile) return notFound();
+
+  // Stats: count items by status in all lists where user is member
+  const { data: allItems } = await db.from("items").select("user_progress, category");
+  let filmsWatched = 0, seriesWatched = 0, totalRatings = 0, ratingSum = 0;
+  const tagCount = {};
+  (allItems || []).forEach(item => {
+    const prog = item.user_progress?.[id];
+    if (!prog) return;
+    if (prog.status === "termine") {
+      if (item.category === "film") filmsWatched++;
+      else seriesWatched++;
+      if (prog.rating > 0) { totalRatings++; ratingSum += prog.rating; }
+    }
+    // Count tags
+    (item.tags || []).forEach(tag => { tagCount[tag] = (tagCount[tag] || 0) + 1; });
+  });
+
+  const favTags = Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([tag])=>tag);
+  const avgRating = totalRatings > 0 ? Math.round((ratingSum/totalRatings)*10)/10 : null;
+
+  // Public watchlists
+  const { data: allLists } = await db.from("watchlists").select("id, name, members, is_public, created_at");
+  const publicLists = (allLists || []).filter(l =>
+    l.is_public !== false && l.members?.some(m => m.id === id)
+  ).map(l => ({ id: l.id, name: l.name, memberCount: l.members?.length || 1, createdAt: l.created_at }));
+
   return ok({
-    token: data.session.access_token,
-    refreshToken: data.session.refresh_token,
+    ...profile,
+    stats: { filmsWatched, seriesWatched, avgRating, totalWatched: filmsWatched + seriesWatched },
+    favTags,
+    publicLists,
   });
 }
 
-// GET /api/lists  — get lists where user is a member
+async function updateProfile(user, body) {
+  const allowed = {};
+  if (body.avatar_url !== undefined) allowed.avatar_url = body.avatar_url;
+  if (body.bio !== undefined) allowed.bio = String(body.bio).slice(0, 200);
+  if (body.confirm_delete !== undefined) allowed.confirm_delete = Boolean(body.confirm_delete);
+  if (body.gender !== undefined) allowed.gender = body.gender;
+  if (body.location !== undefined) allowed.location = String(body.location).slice(0, 100);
+  if (body.website !== undefined) allowed.website = String(body.website).slice(0, 200);
+  // Upsert profile
+  const { error } = await db.from("profiles").upsert({ id: user.id, username: user.username, ...allowed });
+  if (error) return err(error.message, 500);
+  const { data } = await db.from("profiles").select("*").eq("id", user.id).single();
+  return ok(data);
+}
+
+async function searchUsers(user, query) {
+  if (!query?.trim() || query.trim().length < 2) return ok([]);
+  const { data: authUsers } = await db.auth.admin.listUsers();
+  const matches = (authUsers?.users || [])
+    .filter(u => u.id !== user.id && u.user_metadata?.username?.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 10)
+    .map(u => ({ id: u.id, username: u.user_metadata?.username }));
+  // Get their profiles
+  const ids = matches.map(m => m.id);
+  const { data: profiles } = ids.length ? await db.from("profiles").select("*").in("id", ids) : { data: [] };
+  const result = matches.map(m => ({ ...m, ...(profiles?.find(p => p.id === m.id) || {}) }));
+  return ok(result);
+}
+
+// ─── Friends ──────────────────────────────────────────────────────────────────
+async function getFriends(user) {
+  const { data } = await db.from("friendships").select("*").or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+  if (!data) return ok([]);
+  // Enrich with profile data
+  const otherIds = data.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+  const { data: profiles } = otherIds.length ? await db.from("profiles").select("*").in("id", otherIds) : { data: [] };
+  const enriched = data.map(f => {
+    const otherId = f.requester_id === user.id ? f.addressee_id : f.requester_id;
+    const profile = profiles?.find(p => p.id === otherId) || {};
+    return { ...f, other: { id: otherId, username: profile.username || "?", avatar_url: profile.avatar_url || "", created_at: profile.created_at } };
+  });
+  return ok(enriched);
+}
+
+async function sendFriendRequest(user, { addresseeId }) {
+  if (!addresseeId || addresseeId === user.id) return err("Invalid user");
+  const existing = await db.from("friendships").select("id").or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).filter("requester_id", "in", `("${user.id}","${addresseeId}")`);
+  const { error } = await db.from("friendships").insert({ id: genId(), requester_id: user.id, addressee_id: addresseeId, status: "pending" });
+  if (error) return err(error.message);
+  return ok({ sent: true }, 201);
+}
+
+async function updateFriendship(user, id, action) {
+  const { data: fr } = await db.from("friendships").select("*").eq("id", id).single();
+  if (!fr) return notFound();
+  if (fr.addressee_id !== user.id && fr.requester_id !== user.id) return unauthorized();
+  if (action === "accept") {
+    await db.from("friendships").update({ status: "accepted" }).eq("id", id);
+  } else if (action === "reject" || action === "remove") {
+    await db.from("friendships").delete().eq("id", id);
+  }
+  return ok({ done: true });
+}
+
+// ─── Direct messages ──────────────────────────────────────────────────────────
+async function getDMs(user, otherId) {
+  const { data } = await db.from("direct_messages").select("*")
+    .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${user.id})`)
+    .order("created_at").limit(200);
+  // Mark as read
+  await db.from("direct_messages").update({ read: true }).eq("receiver_id", user.id).eq("sender_id", otherId);
+  return ok(data || []);
+}
+
+async function markRead(user, otherId) {
+  await db.from("direct_messages").update({ read: true }).eq("receiver_id", user.id).eq("sender_id", otherId);
+  return ok({ done: true });
+}
+
+async function sendDM(user, otherId, { content }) {
+  if (!content?.trim()) return err("Content required");
+  const msg = { id: genId(), sender_id: user.id, receiver_id: otherId, content: content.trim() };
+  const { error } = await db.from("direct_messages").insert(msg);
+  if (error) return err(error.message, 500);
+  return ok(msg, 201);
+}
+
+async function getUnreadCount(user) {
+  const { count } = await db.from("direct_messages").select("id", { count: "exact", head: true }).eq("receiver_id", user.id).eq("read", false);
+  return ok({ count: count || 0 });
+}
+
+// ─── Lists ────────────────────────────────────────────────────────────────────
 async function getLists(user) {
-  const { data, error } = await db.from("watchlists").select("*");
-  if (error) return err(error.message, 500);
-  const mine = (data || []).filter((l) => l.members?.some((m) => m.id === user.id));
-  return ok(mine);
+  const { data } = await db.from("watchlists").select("*");
+  return ok((data || []).filter(l => l.members?.some(m => m.id === user.id)));
 }
 
-// POST /api/lists  — create a new list
-async function createList(user, body) {
-  const { name } = body;
+async function createList(user, { name }) {
   if (!name?.trim()) return err("Name required");
-  const newList = {
-    id: genId(),
-    name: name.trim(),
-    owner_id: user.id,
-    invite_code: genCode(),
-    members: [{ id: user.id, username: user.username }],
-  };
-  const { error } = await db.from("watchlists").insert(newList);
-  if (error) return err(error.message, 500);
-  return ok(newList, 201);
+  const list = { id: genId(), name: name.trim(), owner_id: user.id, invite_code: genCode(), members: [{ id: user.id, username: user.username, role: "owner", joinedAt: new Date().toISOString() }] };
+  await db.from("watchlists").insert(list);
+  return ok(list, 201);
 }
 
-// POST /api/lists/join  — join a list by invite code
-async function joinList(user, body) {
-  const { code } = body;
-  if (!code) return err("Code required");
-  const { data: list, error } = await db.from("watchlists").select("*").eq("invite_code", code.toUpperCase()).single();
-  if (error || !list) return err("Invalid code", 404);
+async function renameList(user, listId, { name }) {
+  const { data: list } = await db.from("watchlists").select("*").eq("id", listId).single();
+  if (!list) return notFound();
+  const me = list.members?.find(m => m.id === user.id);
+  if (!me || !["owner","admin"].includes(me.role)) return err("Insufficient permissions", 403);
+  await db.from("watchlists").update({ name: name.trim() }).eq("id", listId);
+  return ok({ id: listId, name: name.trim() });
+}
 
-  const already = list.members?.some((m) => m.id === user.id);
-  if (!already) {
-    const newMembers = [...(list.members || []), { id: user.id, username: user.username }];
+async function joinList(user, { code }) {
+  const { data: list } = await db.from("watchlists").select("*").eq("invite_code", code?.toUpperCase()).single();
+  if (!list) return err("Invalid code", 404);
+  if (!list.members?.some(m => m.id === user.id)) {
+    const newMembers = [...(list.members || []), { id: user.id, username: user.username, role: "member", joinedAt: new Date().toISOString() }];
     await db.from("watchlists").update({ members: newMembers }).eq("id", list.id);
     list.members = newMembers;
   }
   return ok(list);
 }
 
-// GET /api/lists/:id/items
-async function getItems(user, listId) {
-  // Verify membership
-  const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
-  if (!list?.members?.some((m) => m.id === user.id)) return unauthorized();
+async function updateMemberRole(user, listId, memberId, { role }) {
+  const { data: list } = await db.from("watchlists").select("*").eq("id", listId).single();
+  if (!list) return notFound();
+  const me = list.members?.find(m => m.id === user.id);
+  if (!me || me.role !== "owner" && me.role !== "admin") return err("Insufficient permissions", 403);
+  const validRoles = ["admin","moderator","member"];
+  if (!validRoles.includes(role)) return err("Invalid role");
+  const newMembers = list.members.map(m => m.id === memberId ? { ...m, role } : m);
+  await db.from("watchlists").update({ members: newMembers }).eq("id", listId);
+  return ok({ done: true });
+}
 
-  const { data, error } = await db.from("items").select("*").eq("watchlist_id", listId).order("created_at");
-  if (error) return err(error.message, 500);
+async function removeMember(user, listId, memberId) {
+  const { data: list } = await db.from("watchlists").select("*").eq("id", listId).single();
+  if (!list) return notFound();
+  const me = list.members?.find(m => m.id === user.id);
+  if (!me || (me.role !== "owner" && me.id !== memberId)) return err("Insufficient permissions", 403);
+  const newMembers = list.members.filter(m => m.id !== memberId);
+  await db.from("watchlists").update({ members: newMembers }).eq("id", listId);
+  return ok({ done: true });
+}
+
+// ─── Items ────────────────────────────────────────────────────────────────────
+async function getItems(user, listId) {
+  const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
+  const { data } = await db.from("items").select("*").eq("watchlist_id", listId).order("created_at");
   return ok(data || []);
 }
 
-// POST /api/lists/:id/items  — create item
 async function createItem(user, listId, body) {
   const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
-  if (!list?.members?.some((m) => m.id === user.id)) return unauthorized();
-
-  const item = {
-    id: body.id || genId(),
-    watchlist_id: listId,
-    title: body.title,
-    category: body.category || "film",
-    tags: body.tags || [],
-    poster_url: body.poster_url || "",
-    added_by: user.id,
-    added_by_name: user.username,
-    user_progress: body.user_progress || {},
-  };
-  if (!item.title) return err("Title required");
-  const { error } = await db.from("items").insert(item);
-  if (error) return err(error.message, 500);
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
+  if (!body.title) return err("Title required");
+  const item = { id: body.id || genId(), watchlist_id: listId, title: body.title, category: body.category || "film", tags: body.tags || [], poster_url: body.poster_url || "", added_by: user.id, added_by_name: user.username, user_progress: body.user_progress || {} };
+  await db.from("items").insert(item);
   return ok(item, 201);
 }
 
-// PUT /api/lists/:id/items/:itemId  — update item (progress, poster, etc.)
 async function updateItem(user, listId, itemId, body) {
   const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
-  if (!list?.members?.some((m) => m.id === user.id)) return unauthorized();
-
-  // Allow any member to update user_progress; only owner can update other fields
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
   const { data: existing } = await db.from("items").select("*").eq("id", itemId).single();
   if (!existing) return notFound();
-
-  const updates = { user_progress: { ...existing.user_progress, ...body.user_progress } };
-  // Owner can edit metadata
-  if (existing.added_by === user.id) {
+  const updates = {};
+  // Any member can update their own progress
+  if (body.user_progress) updates.user_progress = { ...existing.user_progress, ...body.user_progress };
+  // Only owner/admin/moderator or item creator can edit metadata
+  const me = list.members.find(m => m.id === user.id);
+  const canEdit = existing.added_by === user.id || ["owner","admin","moderator"].includes(me?.role);
+  if (canEdit) {
     if (body.title) updates.title = body.title;
     if (body.category) updates.category = body.category;
     if (body.tags !== undefined) updates.tags = body.tags;
     if (body.poster_url !== undefined) updates.poster_url = body.poster_url;
   }
-
-  const { error } = await db.from("items").update(updates).eq("id", itemId);
-  if (error) return err(error.message, 500);
+  await db.from("items").update(updates).eq("id", itemId);
   return ok({ ...existing, ...updates });
 }
 
-// DELETE /api/lists/:id/items/:itemId
-async function deleteItem(user, listId, itemId) {
-  const { data: item } = await db.from("items").select("added_by, watchlist_id").eq("id", itemId).single();
+async function deleteItemHandler(user, listId, itemId) {
+  const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
+  const { data: item } = await db.from("items").select("added_by").eq("id", itemId).single();
   if (!item) return notFound();
-  if (item.watchlist_id !== listId) return err("Mismatch");
-  if (item.added_by !== user.id) return err("Only the creator can delete this item", 403);
-
-  const { error } = await db.from("items").delete().eq("id", itemId);
-  if (error) return err(error.message, 500);
+  const me = list.members.find(m => m.id === user.id);
+  const canDelete = item.added_by === user.id || ["owner","admin"].includes(me?.role);
+  if (!canDelete) return err("Only the creator or an admin can delete this item", 403);
+  await db.from("items").delete().eq("id", itemId);
   return ok({ deleted: true });
 }
 
-// GET /api/lists/:id/messages?limit=100&before=<timestamp>
+// ─── Messages ─────────────────────────────────────────────────────────────────
 async function getMessages(user, listId, query) {
   const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
-  if (!list?.members?.some((m) => m.id === user.id)) return unauthorized();
-
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
   const limit = Math.min(parseInt(query.limit || "100"), 200);
-  let q = db.from("messages").select("*").eq("watchlist_id", listId).order("created_at", { ascending: false }).limit(limit);
-  if (query.before) q = q.lt("created_at", query.before);
-
-  const { data, error } = await q;
-  if (error) return err(error.message, 500);
+  const { data } = await db.from("messages").select("*").eq("watchlist_id", listId).order("created_at", { ascending: false }).limit(limit);
   return ok((data || []).reverse());
 }
 
-// POST /api/lists/:id/messages
-async function sendMessage(user, listId, body) {
+async function sendMessage(user, listId, { content }) {
   const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
-  if (!list?.members?.some((m) => m.id === user.id)) return unauthorized();
-
-  const { content } = body;
+  if (!list?.members?.some(m => m.id === user.id)) return unauthorized();
   if (!content?.trim()) return err("Content required");
-
-  const msg = {
-    id: genId(),
-    watchlist_id: listId,
-    user_id: user.id,
-    username: user.username,
-    content: content.trim(),
-  };
-  const { error } = await db.from("messages").insert(msg);
-  if (error) return err(error.message, 500);
+  const msg = { id: genId(), watchlist_id: listId, user_id: user.id, username: user.username, content: content.trim() };
+  await db.from("messages").insert(msg);
   return ok(msg, 201);
 }
 
-// ─── Search posters (proxied through backend to avoid CORS issues) ────────────
-async function searchPosters(query) {
-  const { title, category } = query;
+async function getGlobalChat() {
+  const { data } = await db.from("messages").select("*").eq("watchlist_id", "__global__").order("created_at", { ascending: false }).limit(100);
+  return ok((data || []).reverse());
+}
+
+async function sendGlobalMsg(user, { content }) {
+  if (!content?.trim()) return err("Content required");
+  const msg = { id: genId(), watchlist_id: "__global__", user_id: user.id, username: user.username, content: content.trim() };
+  await db.from("messages").insert(msg);
+  return ok(msg, 201);
+}
+
+// ─── Poster search ────────────────────────────────────────────────────────────
+async function searchPosters({ title, category }) {
   if (!title) return err("Title required");
   const results = [];
-
   try {
     if (category === "film") {
       const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(title)}&media=movie&limit=8&country=fr`);
       const d = await r.json();
-      for (const item of d.results || []) {
-        if (item.artworkUrl100) results.push({
-          url: item.artworkUrl100.replace("100x100bb", "600x900bb"),
-          label: item.trackName || item.collectionName,
-        });
-      }
+      for (const item of d.results || []) if (item.artworkUrl100) results.push({ url: item.artworkUrl100.replace("100x100bb","600x900bb"), label: item.trackName });
     }
-    // TVMaze for series
-    if (category === "serie" || results.length < 3) {
-      const r = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`);
-      const d = await r.json();
-      for (const item of d || []) {
-        const img = item.show?.image?.original || item.show?.image?.medium;
-        if (img) results.push({ url: img, label: item.show.name });
-      }
-    }
-    // iTunes TV shows
-    const r2 = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(title)}&media=tvShow&limit=5&country=fr`);
+    const r2 = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`);
     const d2 = await r2.json();
-    for (const item of d2.results || []) {
-      if (item.artworkUrl100) {
-        const url = item.artworkUrl100.replace("100x100bb", "600x900bb");
-        if (!results.find((x) => x.url === url))
-          results.push({ url, label: item.collectionName || item.trackName });
-      }
-    }
-  } catch { /* silent */ }
-
+    for (const item of d2 || []) { const img = item.show?.image?.original || item.show?.image?.medium; if (img) results.push({ url: img, label: item.show.name }); }
+    const r3 = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(title)}&media=tvShow&limit=5&country=fr`);
+    const d3 = await r3.json();
+    for (const item of d3.results || []) if (item.artworkUrl100) { const url = item.artworkUrl100.replace("100x100bb","600x900bb"); if (!results.find(x=>x.url===url)) results.push({ url, label: item.collectionName }); }
+  } catch {}
   return ok(results.slice(0, 10));
 }
 
-// ─── Main handler ──────────────────────────────────────────────────────────────
-export const handler = async (event) => {
-  // CORS preflight
-  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: CORS, body: "" };
+// ─── Moderation ─────────────────────────────────────────────────────────────────
+async function moderationAction(actor, { targetId, action, reason, newRole }) {
+  const actorRole = await getGlobalRole(actor.id);
+  if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
 
+  if (action === "role_change") {
+    if (!canAdmin(actorRole)) return err("Only admins can change roles", 403);
+    const validRoles = ["moderator","vip","user"];
+    if (actorRole === "superadmin") validRoles.push("admin");
+    if (!validRoles.includes(newRole)) return err("Invalid role");
+    await db.from("profiles").update({ global_role: newRole }).eq("id", targetId);
+  }
+
+  // Log the action
+  const { data: targetProfile } = await db.from("profiles").select("username").eq("id", targetId).single();
+  await db.from("moderation_actions").insert({
+    id: Math.random().toString(36).slice(2,9) + Date.now().toString(36),
+    target_id: targetId,
+    mod_id: actor.id,
+    mod_name: actor.username,
+    action,
+    reason: reason || "",
+  });
+
+  return ok({ done: true, action, target: targetProfile?.username });
+}
+
+async function getModerationLog(actor) {
+  const actorRole = await getGlobalRole(actor.id);
+  if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
+  const { data } = await db.from("moderation_actions").select("*").order("created_at", { ascending: false }).limit(100);
+  return ok(data || []);
+}
+
+async function deleteMessage(actor, msgId) {
+  const actorRole = await getGlobalRole(actor.id);
+  if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
+  await db.from("messages").delete().eq("id", msgId);
+  return ok({ deleted: true });
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: CORS, body: "" };
   const method = event.httpMethod;
   const rawPath = event.path
     .replace(/^\/.netlify\/functions\/api/, "")
@@ -287,45 +401,88 @@ export const handler = async (event) => {
   const query = event.queryStringParameters || {};
 
   try {
-    // ── Public routes (no auth needed) ──────────────────────────────────────
+    // ── Public ────────────────────────────────────────────────────────────────
     if (segments[0] === "auth") {
       if (method === "POST" && segments[1] === "register") return await register(body);
-      if (method === "POST" && segments[1] === "login") return await login(body);
-      if (method === "POST" && segments[1] === "refresh") return await refreshSession(body);
+      if (method === "POST" && segments[1] === "login")    return await login(body);
+      if (method === "POST" && segments[1] === "refresh")  return await refreshSession(body);
       if (method === "POST" && segments[1] === "forgot-password") return await forgotPassword(body);
       return notFound();
     }
-
-    // ── Poster search (auth optional but recommended) ─────────────────────
     if (method === "GET" && segments[0] === "posters") return await searchPosters(query);
 
-    // ── Protected routes ─────────────────────────────────────────────────────
+    // ── Protected ─────────────────────────────────────────────────────────────
     const user = await verifyToken(event.headers?.authorization || event.headers?.Authorization);
     if (!user) return unauthorized();
 
+    // Profiles
+    if (segments[0] === "profiles") {
+      if (method === "GET"  && segments[1] === "search")          return await searchUsers(user, query.q);
+      if (method === "GET"  && segments[1] && segments[2] === "public") return await getPublicProfile(segments[1]);
+      if (method === "GET"  && segments[1])                       return await getProfile(segments[1]);
+      if (method === "PUT"  && segments[1] === "me")              return await updateProfile(user, body);
+    }
+
+    // Moderation
+    if (segments[0] === "mod") {
+      if (method === "POST" && segments[1] === "action")          return await moderationAction(user, body);
+      if (method === "GET"  && segments[1] === "log")             return await getModerationLog(user);
+      if (method === "DELETE" && segments[1] === "message" && segments[2]) return await deleteMessage(user, segments[2]);
+    }
+
+    // Friends
+    if (segments[0] === "friends") {
+      if (method === "GET"  && segments.length === 1)            return await getFriends(user);
+      if (method === "POST" && segments[1] === "request")        return await sendFriendRequest(user, body);
+      if (method === "PUT"  && segments[1] && segments[2] === "accept") return await updateFriendship(user, segments[1], "accept");
+      if (method === "PUT"  && segments[1] && segments[2] === "reject") return await updateFriendship(user, segments[1], "reject");
+      if (method === "DELETE" && segments[1])                    return await updateFriendship(user, segments[1], "remove");
+    }
+
+    // DMs
+    if (segments[0] === "dm") {
+      const otherId = segments[1];
+      if (!otherId) return notFound();
+      if (method === "GET")  return await getDMs(user, otherId);
+      if (method === "POST") return await sendDM(user, otherId, body);
+      if (method === "PUT" && segments[2] === "read") return await markRead(user, otherId);
+    }
+
+    // Global chat
+    if (segments[0] === "chat" && segments[1] === "global") {
+      if (method === "GET")  return await getGlobalChat();
+      if (method === "POST") return await sendGlobalMsg(user, body);
+    }
+
     // Lists
     if (segments[0] === "lists") {
-      if (method === "GET" && segments.length === 1) return await getLists(user);
+      if (method === "GET"  && segments.length === 1) return await getLists(user);
       if (method === "POST" && segments.length === 1) return await createList(user, body);
       if (method === "POST" && segments[1] === "join") return await joinList(user, body);
 
-      const listId = segments[1];
-      if (!listId) return notFound();
+      const listId = segments[1]; if (!listId) return notFound();
+
+      if (method === "PUT"  && segments.length === 2) return await renameList(user, listId, body);
+
+      // Members
+      if (segments[2] === "members") {
+        const memberId = segments[3];
+        if (method === "PUT"    && memberId) return await updateMemberRole(user, listId, memberId, body);
+        if (method === "DELETE" && memberId) return await removeMember(user, listId, memberId);
+      }
 
       // Items
       if (segments[2] === "items") {
-        if (method === "GET" && segments.length === 3) return await getItems(user, listId);
-        if (method === "POST" && segments.length === 3) return await createItem(user, listId, body);
-        const itemId = segments[3];
-        if (itemId) {
-          if (method === "PUT") return await updateItem(user, listId, itemId, body);
-          if (method === "DELETE") return await deleteItem(user, listId, itemId);
-        }
+        if (method === "GET"    && segments.length === 3) return await getItems(user, listId);
+        if (method === "POST"   && segments.length === 3) return await createItem(user, listId, body);
+        const itemId = segments[3]; if (!itemId) return notFound();
+        if (method === "PUT")    return await updateItem(user, listId, itemId, body);
+        if (method === "DELETE") return await deleteItemHandler(user, listId, itemId);
       }
 
       // Messages
       if (segments[2] === "messages") {
-        if (method === "GET") return await getMessages(user, listId, query);
+        if (method === "GET")  return await getMessages(user, listId, query);
         if (method === "POST") return await sendMessage(user, listId, body);
       }
     }
