@@ -22,16 +22,17 @@ const BD = {background:"rgba(248,113,113,0.12)",color:C.danger,border:`1px solid
 const LB = {display:"block",fontSize:10,color:C.muted,marginBottom:4,letterSpacing:0.8,textTransform:"uppercase"};
 
 const CATEGORIES = [
-  {id:"film",label:"🎬 Film"},
-  {id:"serie",label:"📺 Série"},
-  {id:"anime",label:"⛩️ Animé"},
-  {id:"animation",label:"🎨 Animation"},
-  {id:"documentary",label:"🎙️ Documentaire"},
-  {id:"short",label:"⏱ Court-métrage"},
-  {id:"reality",label:"📡 Télé-réalité"},
-  {id:"sport",label:"🏆 Sport"},
+  {id:"film",      label:"🎬 Film",         short:"Film"},
+  {id:"serie",     label:"📺 Série",         short:"Série"},
+  {id:"anime",     label:"⛩️ Animé",         short:"Animé"},
+  {id:"animation", label:"🎨 Animation",     short:"Anim."},
+  {id:"documentary",label:"🎙️ Documentaire", short:"Docu"},
+  {id:"short",     label:"⏱ Court",          short:"Court"},
+  {id:"reality",   label:"📡 Télé-réalité",  short:"Télé"},
+  {id:"sport",     label:"🏆 Sport",         short:"Sport"},
 ];
 const CAT_LABEL = Object.fromEntries(CATEGORIES.map(c=>[c.id,c.label]));
+const CAT_SHORT = Object.fromEntries(CATEGORIES.map(c=>[c.id,c.short]));
 
 const GLOBAL_ROLES = {
   superadmin:{label:"👑 Super Admin",color:"#C9A84C",level:5,bg:"rgba(201,168,76,0.15)"},
@@ -50,6 +51,55 @@ const BADGES = [
   {min:30, icon:"⭐",label:"Régulier",  color:"#60A5FA"},
   {min:0,  icon:"🌱",label:"Nouveau",   color:"#10B981"},
 ];
+// ─── Themes ───────────────────────────────────────────────────────────────────
+const THEMES = {
+  dark: {
+    name:"Sombre",icon:"🌑",
+    bg:"#0b0b18",surface:"#111128",card:"#181830",
+    border:"rgba(255,255,255,0.07)",text:"#F0EBE0",muted:"#5C6070",
+    gold:"#C9A84C",accent:"#C9A84C",
+  },
+  discord: {
+    name:"Discord",icon:"💬",
+    bg:"#313338",surface:"#2b2d31",card:"#1e1f22",
+    border:"rgba(255,255,255,0.06)",text:"#dbdee1",muted:"#80848e",
+    gold:"#5865f2",accent:"#5865f2",
+  },
+  midnight: {
+    name:"Minuit",icon:"🌌",
+    bg:"#060612",surface:"#0d0d20",card:"#12122a",
+    border:"rgba(100,80,255,0.15)",text:"#e8e0ff",muted:"#6060a0",
+    gold:"#8b5cf6",accent:"#8b5cf6",
+  },
+  forest: {
+    name:"Forêt",icon:"🌿",
+    bg:"#0a1208",surface:"#0f1a0d",card:"#152212",
+    border:"rgba(50,200,80,0.12)",text:"#d4edda",muted:"#4a7055",
+    gold:"#4ade80",accent:"#4ade80",
+  },
+  sakura: {
+    name:"Sakura",icon:"🌸",
+    bg:"#1a0a14",surface:"#220d1a",card:"#2a1020",
+    border:"rgba(255,100,150,0.12)",text:"#fde8f0",muted:"#a05070",
+    gold:"#f472b6",accent:"#f472b6",
+  },
+  ocean: {
+    name:"Océan",icon:"🌊",
+    bg:"#060d1a",surface:"#0a1428",card:"#0e1a34",
+    border:"rgba(30,150,255,0.12)",text:"#ddeeff",muted:"#4070a0",
+    gold:"#38bdf8",accent:"#38bdf8",
+  },
+};
+
+function getThemeColors(themeKey){
+  const t=THEMES[themeKey]||THEMES.dark;
+  return{
+    bg:t.bg, surface:t.surface, card:t.card, border:t.border,
+    text:t.text, muted:t.muted, gold:t.gold, accent:t.accent,
+    blue:"#60A5FA", success:"#10B981", warning:"#F59E0B", danger:"#F87171", purple:"#A78BFA",
+  };
+}
+
 function getBadge(createdAt){
   const days=Math.floor((Date.now()-new Date(createdAt||Date.now()).getTime())/86400000);
   return BADGES.find(b=>days>=b.min)||BADGES[BADGES.length-1];
@@ -135,11 +185,182 @@ function TagInput({tags=[],onChange,lang}){
   );
 }
 
+// ─── Film Detail Modal ────────────────────────────────────────────────────────
+function FilmDetailModal({item,user,lang,onClose}){
+  const [lists,setLists]=useState([]);
+  const [watchlog,setWatchlog]=useState([]);
+  const [selectedList,setSelectedList]=useState("");
+  const [status,setStatus]=useState("a_voir");
+  const [rating,setRating]=useState(0);
+  const [minutes,setMinutes]=useState("");
+  const [season,setSeason]=useState("");
+  const [episode,setEpisode]=useState("");
+  const [adding,setAdding]=useState(false);
+  const [addingLog,setAddingLog]=useState(false);
+  const [msg,setMsg]=useState("");
+  const [tab,setTab]=useState("lists"); // "lists" | "log"
+  const [tmdbDetails,setTmdbDetails]=useState(null);
+
+  const isFilmType = item.category==="film"||item.category==="short"||item.category==="documentary";
+
+  useEffect(()=>{
+    api.getLists().then(setLists);
+    api.getWatchlog().then(setWatchlog);
+    // Try to fetch extra TMDB details if we have tmdb_id
+    if(item.tmdb_id && import.meta.env.VITE_TMDB_KEY){
+      const type = item.category==="serie"||item.category==="anime" ? "tv" : "movie";
+      fetch(`https://api.themoviedb.org/3/${type}/${item.tmdb_id}?api_key=${import.meta.env.VITE_TMDB_KEY}&language=fr-FR`)
+        .then(r=>r.json()).then(setTmdbDetails).catch(()=>{});
+    }
+  },[item.tmdb_id, item.category]);
+
+  const alreadyInLog = watchlog.find(w=>w.title.toLowerCase()===item.title.toLowerCase());
+  const listsWithItem = lists.filter(l=>false); // will check via API in future
+
+  const addToList = async()=>{
+    if(!selectedList){setMsg("Choisis une liste.");return;}
+    setAdding(true);
+    try{
+      await api.createItem(selectedList,{
+        title:item.title, category:item.category||"film",
+        poster_url:item.poster_url||"", tags:[],
+        user_progress:{[user.id]:{status,minutes,season,episode,rating}},
+        tmdb_id:item.tmdb_id||null,
+      });
+      setMsg("✓ Ajouté à la liste !");
+    }catch(e){setMsg("❌ "+e.message);}
+    setAdding(false);
+  };
+
+  const addToLog = async()=>{
+    setAddingLog(true);
+    try{
+      await api.addToWatchlog({
+        title:item.title, category:item.category||"film",
+        poster_url:item.poster_url||"", status, rating:parseInt(rating)||0,
+        minutes:parseInt(minutes)||0, season:parseInt(season)||0,
+        episode:parseInt(episode)||0, tags:[], tmdb_id:item.tmdb_id||null,
+      });
+      setMsg("✓ Ajouté à ton journal !");
+    }catch(e){setMsg("❌ "+e.message);}
+    setAddingLog(false);
+  };
+
+  const st = getStatus(lang)[status]||getStatus(lang).a_voir;
+  const runtime = tmdbDetails?.runtime ? `${tmdbDetails.runtime} min` : item.year ? item.year : "";
+  const genres = tmdbDetails?.genres?.map(g=>g.name).join(", ")||"";
+  const overview = tmdbDetails?.overview || item.overview || "";
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:700,overflowY:"auto",padding:"20px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.surface,borderRadius:18,width:"100%",maxWidth:560,overflow:"hidden",border:`1px solid ${C.border}`}}>
+
+        {/* Backdrop / poster header */}
+        <div style={{position:"relative",height:200,background:"#0d0d1a",overflow:"hidden"}}>
+          {item.poster_url&&<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.35,filter:"blur(4px)",transform:"scale(1.05)"}}/>}
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 30%,rgba(17,17,40,1) 100%)"}}/>
+          <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.5)",border:"none",color:"white",cursor:"pointer",fontSize:16,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>×</button>
+
+          {/* Poster + title overlay */}
+          <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"0 20px 20px",display:"flex",gap:14,alignItems:"flex-end"}}>
+            <div style={{width:72,height:104,borderRadius:8,overflow:"hidden",background:"rgba(255,255,255,0.06)",flexShrink:0,border:`1px solid rgba(255,255,255,0.15)`}}>
+              {item.poster_url?<img src={item.poster_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,opacity:0.2}}>🎬</div>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <h2 style={{margin:"0 0 4px",fontSize:20,fontFamily:"'Playfair Display',serif",color:C.text,textShadow:"0 1px 4px rgba(0,0,0,0.8)"}}>{item.title}</h2>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontSize:11,color:C.gold,background:"rgba(201,168,76,0.15)",padding:"2px 8px",borderRadius:99}}>{CAT_LABEL[item.category]||item.category}</span>
+                {item.year&&<span style={{fontSize:11,color:C.muted}}>{item.year}</span>}
+                {runtime&&<span style={{fontSize:11,color:C.muted}}>{runtime}</span>}
+                {item.rating>0&&<span style={{fontSize:11,color:C.warning}}>⭐ {item.rating}</span>}
+              </div>
+              {genres&&<p style={{margin:"3px 0 0",fontSize:11,color:C.muted}}>{genres}</p>}
+            </div>
+          </div>
+        </div>
+
+        <div style={{padding:"16px 20px 20px",display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* Overview */}
+          {overview&&<p style={{margin:0,fontSize:13,color:"rgba(255,255,255,0.6)",lineHeight:1.6,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{overview}</p>}
+
+          {/* Already in log badge */}
+          {alreadyInLog&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.25)",borderRadius:8}}>
+            <span style={{fontSize:13,color:C.success}}>✓ Déjà dans ton journal</span>
+            <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>{getStatus(lang)[alreadyInLog.status]?.label||alreadyInLog.status}</span>
+          </div>}
+
+          {/* Status + progress fields (shared) */}
+          <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:14,border:`1px solid ${C.border}`}}>
+            <div style={{marginBottom:10}}>
+              <label style={LB}>{t(lang,"my_status")}</label>
+              <select value={status} onChange={e=>setStatus(e.target.value)} style={{...IS,color:st.color}}>
+                <option value="a_voir">{t(lang,"to_watch")}</option>
+                <option value="en_cours">{t(lang,"watching")}</option>
+                <option value="termine">{t(lang,"watched")}</option>
+              </select>
+            </div>
+            {status==="en_cours"&&(isFilmType?(
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" min="0" value={minutes} onChange={e=>setMinutes(e.target.value)} placeholder="25" style={{...IS,width:80}}/>
+                <span style={{color:C.muted,fontSize:13}}>minutes</span>
+              </div>
+            ):(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label style={LB}>Saison</label><input type="number" min="1" value={season} onChange={e=>setSeason(e.target.value)} placeholder="1" style={IS}/></div>
+                <div><label style={LB}>Épisode</label><input type="number" min="1" value={episode} onChange={e=>setEpisode(e.target.value)} placeholder="1" style={IS}/></div>
+              </div>
+            ))}
+            {status==="termine"&&<div style={{marginTop:8}}><label style={LB}>Ma note</label><Stars value={parseInt(rating)||0} onChange={v=>setRating(v)} size={22}/></div>}
+          </div>
+
+          {/* Tabs: add to list vs add to log */}
+          <div style={{display:"flex",gap:0,borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+            {[{k:"lists",l:"📋 Ajouter à une liste"},{k:"log",l:"📖 Mon journal"}].map(tb=>(
+              <button key={tb.k} onClick={()=>setTab(tb.k)} style={{flex:1,background:tab===tb.k?"rgba(201,168,76,0.1)":"transparent",border:"none",borderBottom:tab===tb.k?`2px solid ${C.gold}`:"2px solid transparent",padding:"10px 8px",fontSize:12,color:tab===tb.k?C.gold:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{tb.l}</button>
+            ))}
+          </div>
+
+          {tab==="lists"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div>
+                <label style={LB}>Choisir une liste</label>
+                {lists.length===0
+                  ?<p style={{color:C.muted,fontSize:12}}>Aucune liste. Crée-en une d'abord !</p>
+                  :<select value={selectedList} onChange={e=>setSelectedList(e.target.value)} style={IS}>
+                    <option value="">— Sélectionne une liste —</option>
+                    {lists.map(l=><option key={l.id} value={l.id}>{l.name} ({l.members?.length||1} membre{(l.members?.length||1)>1?"s":""})</option>)}
+                  </select>
+                }
+              </div>
+              <button onClick={addToList} disabled={adding||!selectedList} style={{...BP,width:"100%",opacity:!selectedList||adding?0.5:1}}>
+                {adding?"…":"+ Ajouter à la liste"}
+              </button>
+            </div>
+          )}
+
+          {tab==="log"&&(
+            <div>
+              <p style={{margin:"0 0 10px",fontSize:12,color:C.muted}}>Ajoute ce titre à ton journal personnel, sans liste.</p>
+              <button onClick={addToLog} disabled={addingLog} style={{...BP,width:"100%",opacity:addingLog?0.5:1}}>
+                {addingLog?"…":"+ Ajouter à mon journal"}
+              </button>
+            </div>
+          )}
+
+          {msg&&<p style={{margin:0,fontSize:13,color:msg.startsWith("✓")?C.success:C.danger,textAlign:"center",fontWeight:600}}>{msg}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Search Modal (TMDB) ──────────────────────────────────────────────────────
-function SearchModal({lang,onSelect,onClose}){
+function SearchModal({lang,onSelect,onClose,user}){
   const [q,setQ]=useState("");
   const [results,setResults]=useState([]);
   const [loading,setLoading]=useState(false);
+  const [selected,setSelected]=useState(null);
   const timer=useRef();
 
   useEffect(()=>{
@@ -152,9 +373,14 @@ function SearchModal({lang,onSelect,onClose}){
     },400);
   },[q]);
 
+  // If a film detail is open, show it on top
+  if(selected) return(
+    <FilmDetailModal item={selected} user={user} lang={lang} onClose={()=>setSelected(null)}/>
+  );
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:80,zIndex:600,padding:"60px 16px 0"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:"100%",maxWidth:580,background:C.surface,borderRadius:16,overflow:"hidden",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",flexDirection:"column",alignItems:"center",zIndex:600,padding:"40px 16px 0"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:"100%",maxWidth:580,background:C.surface,borderRadius:16,overflow:"hidden",maxHeight:"82vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:10,alignItems:"center"}}>
           <span style={{fontSize:18}}>🔍</span>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un film, série, animé…" style={{...IS,flex:1,border:"none",background:"transparent",fontSize:15}} autoFocus/>
@@ -162,22 +388,32 @@ function SearchModal({lang,onSelect,onClose}){
         </div>
         <div style={{overflowY:"auto",flex:1}}>
           {loading&&<p style={{textAlign:"center",color:C.muted,padding:20}}>…</p>}
-          {!loading&&results.length===0&&q.trim()&&<p style={{textAlign:"center",color:C.muted,padding:20}}>Aucun résultat.</p>}
+          {!loading&&results.length===0&&q.trim()&&(
+            <div style={{textAlign:"center",color:C.muted,padding:30}}>
+              <div style={{fontSize:32,marginBottom:8}}>🎬</div>
+              <p style={{margin:0}}>Aucun résultat pour "{q}"</p>
+              <p style={{margin:"6px 0 0",fontSize:11}}>Essaie le titre en anglais ou en français</p>
+            </div>
+          )}
           {results.map((r,i)=>(
-            <div key={i} onClick={()=>{onSelect(r);onClose();}} style={{display:"flex",gap:12,padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${C.border}`,transition:"background 0.1s"}}
+            <div key={i} onClick={()=>setSelected(r)}
+              style={{display:"flex",gap:12,padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <div style={{width:40,height:58,borderRadius:4,overflow:"hidden",background:"rgba(255,255,255,0.06)",flexShrink:0}}>
-                {r.poster_url?<img src={r.poster_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:18,opacity:0.2}}>🎬</span>}
+              <div style={{width:44,height:64,borderRadius:6,overflow:"hidden",background:"rgba(255,255,255,0.06)",flexShrink:0}}>
+                {r.poster_url?<img src={r.poster_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  :<span style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:18,opacity:0.2}}>🎬</span>}
               </div>
               <div style={{flex:1}}>
                 <div style={{fontSize:14,color:C.text,fontWeight:600}}>{r.title}</div>
-                <div style={{display:"flex",gap:8,marginTop:3}}>
-                  <span style={{fontSize:11,color:C.muted}}>{CAT_LABEL[r.category]||r.category}</span>
+                <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:C.gold}}>{CAT_SHORT[r.category]||r.category}</span>
                   {r.year&&<span style={{fontSize:11,color:C.muted}}>{r.year}</span>}
+                  {r.rating>0&&<span style={{fontSize:11,color:C.warning}}>⭐ {r.rating}</span>}
                 </div>
                 {r.overview&&<p style={{fontSize:11,color:"rgba(255,255,255,0.3)",margin:"4px 0 0",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{r.overview}</p>}
               </div>
+              <span style={{fontSize:18,color:C.muted,alignSelf:"center"}}>›</span>
             </div>
           ))}
         </div>
@@ -371,7 +607,7 @@ function ItemCard({item,user,members,profiles,onEdit,onDelete,lang,confirmDelete
             :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,opacity:0.1}}>🎬</div>}
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(11,11,24,0.65) 0%,transparent 55%)"}}/>
           <div style={{position:"absolute",top:8,left:8}}>
-            <span style={{fontSize:9,fontWeight:700,letterSpacing:0.8,color:C.gold,background:"rgba(201,168,76,0.15)",padding:"2px 7px",borderRadius:99,border:"1px solid rgba(201,168,76,0.3)"}}>{catLabel.replace(/[🎬📺⛩🎨🎙⏱📡🏆]\s*/,"").toUpperCase()}</span>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:0.8,color:C.gold,background:"rgba(201,168,76,0.15)",padding:"2px 7px",borderRadius:99,border:"1px solid rgba(201,168,76,0.3)"}}>{(CAT_SHORT[item.category]||item.category).toUpperCase()}</span>
           </div>
           <div style={{position:"absolute",top:8,right:8}}>
             <span style={{fontSize:9,background:`${meta.color}20`,color:meta.color,padding:"2px 7px",borderRadius:99,border:`1px solid ${meta.color}40`}}>{meta.label}</span>
@@ -649,27 +885,28 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:500,overflowY:"auto",padding:"32px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:18,width:"100%",maxWidth:540,overflow:"hidden"}}>
-        {/* Header banner */}
-        <div style={{height:90,background:`linear-gradient(135deg,${C.bg} 0%,#1a1040 100%)`,position:"relative",flexShrink:0}}>
-          <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(ellipse at 30% 50%,${gr.bg||"transparent"} 0%,transparent 70%)`}}/>
-          <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.4)",border:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:16,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-        </div>
-
-        {/* Avatar + name row - positioned over banner */}
-        <div style={{padding:"0 22px",marginTop:-36,marginBottom:16,display:"flex",alignItems:"flex-end",gap:14}}>
-          <div style={{width:72,height:72,borderRadius:"50%",border:`3px solid ${C.surface}`,overflow:"hidden",background:`${AV_COLORS[0]}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:700,color:C.gold,flexShrink:0}}>
-            {data.avatar_url?<img src={data.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:data.username[0]?.toUpperCase()}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:18,width:"100%",maxWidth:540}}>
+        {/* Header banner — pas de overflow:hidden pour que l'avatar déborde */}
+        <div style={{background:`linear-gradient(135deg,${C.bg} 0%,#1a1040 100%)`,paddingBottom:24,position:"relative",flexShrink:0}}>
+          <div style={{height:70,position:"relative"}}>
+            <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(ellipse at 30% 50%,${gr.bg||"transparent"} 0%,transparent 70%)`}}/>
+            <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.4)",border:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:16,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
           </div>
-          <div style={{paddingBottom:4,flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-              <h2 style={{margin:0,fontSize:18,fontFamily:"'Playfair Display',serif",color:C.text}}>{data.username}</h2>
-              {data.global_role&&data.global_role!=="user"&&<GlobalRoleBadge role={data.global_role}/>}
+          {/* Avatar + name — dans le banner pour éviter le chevauchement */}
+          <div style={{padding:"0 22px",display:"flex",alignItems:"flex-end",gap:14}}>
+            <div style={{width:72,height:72,borderRadius:"50%",border:`3px solid ${C.surface}`,overflow:"hidden",background:`${AV_COLORS[0]}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:700,color:C.gold,flexShrink:0,marginTop:-20}}>
+              {data.avatar_url?<img src={data.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:data.username[0]?.toUpperCase()}
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
-              <span style={{fontSize:12,color:badge.color}}>{badge.icon} {badge.label}</span>
-              {data.location&&<span style={{fontSize:11,color:C.muted}}>📍 {data.location}</span>}
-              {data.gender&&data.gender!=="ns"&&<span style={{fontSize:12}}>{{m:"♂️",f:"♀️",nb:"⚧️"}[data.gender]||""}</span>}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <h2 style={{margin:0,fontSize:18,fontFamily:"'Playfair Display',serif",color:C.text}}>{data.username}</h2>
+                {data.global_role&&data.global_role!=="user"&&<GlobalRoleBadge role={data.global_role}/>}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:badge.color}}>{badge.icon} {badge.label}</span>
+                {data.location&&<span style={{fontSize:11,color:C.muted}}>📍 {data.location}</span>}
+                {data.gender&&data.gender!=="ns"&&<span style={{fontSize:12}}>{{m:"♂️",f:"♀️",nb:"⚧️"}[data.gender]||""}</span>}
+              </div>
             </div>
           </div>
         </div>
@@ -854,8 +1091,83 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
   );
 }
 
+// ─── Image Crop/Zoom Modal ────────────────────────────────────────────────────
+function ImageCropModal({src,onConfirm,onClose}){
+  const [scale,setScale]=useState(1);
+  const [offsetX,setOffsetX]=useState(0);
+  const [offsetY,setOffsetY]=useState(0);
+  const [dragging,setDragging]=useState(false);
+  const [startPos,setStartPos]=useState({x:0,y:0});
+  const canvasRef=useRef();
+
+  const SIZE=240;
+
+  const draw=()=>{
+    const canvas=canvasRef.current;if(!canvas) return;
+    const ctx=canvas.getContext("2d");
+    const img=new Image();
+    img.onload=()=>{
+      ctx.clearRect(0,0,SIZE,SIZE);
+      // Clip to circle
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(SIZE/2,SIZE/2,SIZE/2,0,Math.PI*2);
+      ctx.clip();
+      const sw=img.width*scale;
+      const sh=img.height*scale;
+      const x=(SIZE-sw)/2+offsetX;
+      const y=(SIZE-sh)/2+offsetY;
+      ctx.drawImage(img,x,y,sw,sh);
+      ctx.restore();
+      // Circle border
+      ctx.beginPath();
+      ctx.arc(SIZE/2,SIZE/2,SIZE/2-1,0,Math.PI*2);
+      ctx.strokeStyle="rgba(201,168,76,0.6)";
+      ctx.lineWidth=2;
+      ctx.stroke();
+    };
+    img.src=src;
+  };
+
+  useEffect(()=>{draw();},[scale,offsetX,offsetY,src]);
+
+  const onMouseDown=e=>{setDragging(true);setStartPos({x:e.clientX-offsetX,y:e.clientY-offsetY});};
+  const onMouseMove=e=>{if(!dragging) return;setOffsetX(e.clientX-startPos.x);setOffsetY(e.clientY-startPos.y);};
+  const onMouseUp=()=>setDragging(false);
+
+  const confirm=()=>{
+    const canvas=canvasRef.current;if(!canvas) return;
+    onConfirm(canvas.toDataURL("image/jpeg",0.85));
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:800,padding:16}}>
+      <div style={{background:C.surface,borderRadius:16,padding:28,width:"100%",maxWidth:340,display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+        <h3 style={{margin:0,fontSize:16,color:C.text}}>✂️ Recadrer la photo</h3>
+        <canvas ref={canvasRef} width={SIZE} height={SIZE}
+          style={{borderRadius:"50%",cursor:dragging?"grabbing":"grab",touchAction:"none"}}
+          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}/>
+        <div style={{width:"100%"}}>
+          <label style={{...LB,textAlign:"center",display:"block"}}>Zoom</label>
+          <input type="range" min="0.3" max="3" step="0.05" value={scale}
+            onChange={e=>setScale(parseFloat(e.target.value))}
+            style={{width:"100%",accentColor:C.gold}}/>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
+            <span>−</span><span>{Math.round(scale*100)}%</span><span>+</span>
+          </div>
+        </div>
+        <p style={{margin:0,fontSize:11,color:C.muted,textAlign:"center"}}>Glisse l'image pour recadrer</p>
+        <div style={{display:"flex",gap:10,width:"100%"}}>
+          <button onClick={onClose} style={{...BS,flex:1}}>Annuler</button>
+          <button onClick={confirm} style={{...BP,flex:1}}>✓ Confirmer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Panel ───────────────────────────────────────────────────────────
-function SettingsPanel({user,lang,setLang,onClose,onUpdated}){
+function SettingsPanel({user,lang,setLang,theme,setTheme,onClose,onUpdated}){
   const [profile,setProfile]=useState({avatar_url:"",bio:"",confirm_delete:true,gender:"",location:"",website:""});
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState("");
@@ -863,11 +1175,13 @@ function SettingsPanel({user,lang,setLang,onClose,onUpdated}){
 
   useEffect(()=>{api.getProfile(user.id).then(p=>setProfile(p)).catch(()=>{});},[user.id]);
 
+  const [cropSrc,setCropSrc]=useState(null);
+
   const handleFile=e=>{
     const file=e.target.files?.[0];if(!file) return;
-    if(file.size>1_200_000){setMsg("Image trop grande (max 1Mo)");return;}
+    if(file.size>5_000_000){setMsg("Image trop grande (max 5Mo)");return;}
     const reader=new FileReader();
-    reader.onload=()=>setProfile(p=>({...p,avatar_url:reader.result}));
+    reader.onload=()=>setCropSrc(reader.result);
     reader.readAsDataURL(file);e.target.value="";
   };
 
@@ -947,10 +1261,28 @@ function SettingsPanel({user,lang,setLang,onClose,onUpdated}){
             </div>
           </div>
           <div><label style={LB}>{t(lang,"language")}</label><LangToggle lang={lang} setLang={setLang}/></div>
+          <div>
+            <label style={LB}>Thème</label>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+              {Object.entries(THEMES).map(([key,th])=>(
+                <button key={key} onClick={()=>setTheme(key)}
+                  style={{background:theme===key?`${C.gold}18`:"rgba(255,255,255,0.04)",border:`1px solid ${theme===key?C.gold:C.border}`,borderRadius:8,padding:"8px 6px",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <span style={{fontSize:18}}>{th.icon}</span>
+                  <span style={{fontSize:11,color:theme===key?C.gold:C.muted,fontWeight:theme===key?700:400}}>{th.name}</span>
+                  <div style={{display:"flex",gap:2,marginTop:2}}>
+                    {[th.bg,th.surface,th.gold].map((col,i)=>(
+                      <div key={i} style={{width:10,height:10,borderRadius:"50%",background:col,border:"1px solid rgba(255,255,255,0.1)"}}/>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
           {msg&&<p style={{fontSize:12,color:msg.includes("!")?C.success:C.danger,margin:0,textAlign:"center"}}>{msg}</p>}
           <button onClick={save} disabled={saving} style={{...BP,width:"100%",opacity:saving?0.7:1}}>{saving?"…":"Sauvegarder"}</button>
         </div>
       </div>
+      {cropSrc&&<ImageCropModal src={cropSrc} onConfirm={url=>{setProfile(p=>({...p,avatar_url:url}));setCropSrc(null);}} onClose={()=>setCropSrc(null)}/>}
     </div>
   );
 }
@@ -1310,7 +1642,7 @@ function WatchlogPage({user,lang,onClose}){
         </div>
       </div>
       {modal!==null&&<WatchlogModal item={Object.keys(modal).length?modal:null} lang={lang} onSave={save} onClose={()=>setModal(null)}/>}
-      {searchOpen&&<SearchModal lang={lang} onSelect={handleSearchSelect} onClose={()=>setSearchOpen(false)}/>}
+      {searchOpen&&<SearchModal lang={lang} user={user} onSelect={handleSearchSelect} onClose={()=>setSearchOpen(false)}/>}
     </div>
   );
 }
@@ -1365,7 +1697,7 @@ function WatchlogModal({item,lang,onSave,onClose}){
 }
 
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
-function AuthScreen({onLogin,lang,setLang}){
+function AuthScreen({onLogin,lang,setLang,theme,setTheme}){
   const [mode,setMode]=useState("login");
   const [username,setUsername]=useState("");
   const [email,setEmail]=useState("");
@@ -1394,8 +1726,11 @@ function AuthScreen({onLogin,lang,setLang}){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{position:"fixed",top:16,right:16}}><LangToggle lang={lang} setLang={setLang}/></div>
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16,transition:"background 0.3s"}}>
+      <div style={{position:"fixed",top:16,right:16,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+        <LangToggle lang={lang} setLang={setLang}/>
+        <div style={{display:"flex",gap:5}}>{Object.entries(THEMES).map(([k,th])=><button key={k} onClick={()=>{setTheme(k);localStorage.setItem("wl_theme",k);Object.assign(C,getThemeColors(k));}} title={th.name} style={{width:18,height:18,borderRadius:"50%",background:th.gold,border:`2px solid ${theme===k?"white":"transparent"}`,cursor:"pointer",padding:0}}/>)}</div>
+      </div>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:"36px 32px",width:"100%",maxWidth:360}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{fontSize:38,marginBottom:8}}>🎞</div>
@@ -1463,6 +1798,7 @@ function ShareModal({list,lang,onClose}){
 export default function App(){
   const [user,setUser]=useState(()=>api.getUser());
   const [lang,setLang]=useState(()=>localStorage.getItem("wl_lang")||"fr");
+  const [theme,setTheme]=useState(()=>localStorage.getItem("wl_theme")||"dark");
   const [page,setPage]=useState("home"); // "home" | "list"
   const [lists,setLists]=useState([]);
   const [currentId,setCurrentId]=useState(null);
@@ -1491,8 +1827,15 @@ export default function App(){
   const [filterTag,setFilterTag]=useState("");
   const [search,setSearch]=useState("");
   const [confirmDelete,setConfirmDelete]=useState(true);
+  const [sortBy,setSortBy]=useState("date"); // "date" | "title" | "episodes" | member ID
+  const [filterMembers,setFilterMembers]=useState([]); // multi-select member IDs
 
   const changeLang=l=>{setLang(l);localStorage.setItem("wl_lang",l);};
+  const changeTheme=t=>{setTheme(t);localStorage.setItem("wl_theme",t);};
+  // Apply theme to C dynamically
+  const TC=getThemeColors(theme);
+  // Override C values with current theme (mutate for all components in render scope)
+  Object.assign(C,TC);
 
   // Logout listener
   useEffect(()=>{
@@ -1581,7 +1924,7 @@ export default function App(){
     }
   };
 
-  if(!user) return <AuthScreen onLogin={u=>{api.saveUser(u);setUser(u);}} lang={lang} setLang={changeLang}/>;
+  if(!user) return <AuthScreen onLogin={u=>{api.saveUser(u);setUser(u);}} lang={lang} setLang={changeLang} theme={theme} setTheme={changeTheme}/>;
 
   const currentList=lists.find(l=>l.id===currentId);
   const members=currentList?.members||[];
@@ -1596,7 +1939,30 @@ export default function App(){
     if(filterStatus!=="all"&&(p.status||"a_voir")!==filterStatus) return false;
     if(filterTag&&!(i.tags||[]).includes(filterTag)) return false;
     if(search&&!i.title.toLowerCase().includes(search.toLowerCase())) return false;
+    // Multi-member filter: item must have at least one of selected members with any progress
+    if(filterMembers.length>0&&!filterMembers.some(mid=>i.user_progress[mid])) return false;
     return true;
+  }).sort((a,b)=>{
+    if(sortBy==="title") return a.title.localeCompare(b.title,"fr");
+    if(sortBy==="episodes"){
+      const pa=a.user_progress[user.id]||{};const pb=b.user_progress[user.id]||{};
+      const sa=(parseInt(pa.season||0)*1000)+(parseInt(pa.episode||0)||0)+(parseInt(pa.minutes||0)||0);
+      const sb=(parseInt(pb.season||0)*1000)+(parseInt(pb.episode||0)||0)+(parseInt(pb.minutes||0)||0);
+      return sb-sa;
+    }
+    if(sortBy==="rating"){
+      const ra=a.user_progress[user.id]?.rating||0;const rb=b.user_progress[user.id]?.rating||0;
+      return rb-ra;
+    }
+    // Sort by member progress if a member id is selected
+    const member=members.find(m=>m.id===sortBy);
+    if(member){
+      const pa=a.user_progress[member.id]||{};const pb=b.user_progress[member.id]||{};
+      const order={"termine":3,"en_cours":2,"a_voir":1};
+      return (order[pb.status||"a_voir"]||0)-(order[pa.status||"a_voir"]||0);
+    }
+    // Default: date added
+    return new Date(b.created_at)-new Date(a.created_at);
   });
 
   const counts={
@@ -1607,8 +1973,9 @@ export default function App(){
   const STATUS=getStatus(lang);
 
   return(
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",fontFamily:"'Outfit',sans-serif",color:C.text}}>
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",fontFamily:"'Outfit',sans-serif",color:C.text,transition:"background 0.3s,color 0.3s"}}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet"/>
+      <style>{`body{background:${C.bg};transition:background 0.3s;}::-webkit-scrollbar-thumb{background:${C.gold}33;} ::selection{background:${C.gold}44;}`}</style>
 
       {/* ── Sidebar ─────────────────────────────────────── */}
       <div style={{width:214,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",padding:"16px 12px",gap:14,minHeight:"100vh",boxSizing:"border-box",overflowY:"auto"}}>
@@ -1726,7 +2093,7 @@ export default function App(){
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t(lang,"search")} style={{...IS,background:"rgba(255,255,255,0.03)",fontSize:12,marginBottom:8}}/>
               <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                 <FBtn label={t(lang,"all")} active={filterCat==="all"} onClick={()=>setFilterCat("all")}/>
-                {CATEGORIES.map(c=><FBtn key={c.id} label={c.label.replace(/[^\w\s]/g,"").trim().slice(0,10)} active={filterCat===c.id} onClick={()=>setFilterCat(filterCat===c.id?"all":c.id)}/>)}
+                {CATEGORIES.map(c=><FBtn key={c.id} label={c.short} active={filterCat===c.id} onClick={()=>setFilterCat(filterCat===c.id?"all":c.id)}/>)}
                 <span style={{color:C.border,margin:"0 3px"}}>|</span>
                 <FBtn label={t(lang,"all")} active={filterStatus==="all"} onClick={()=>setFilterStatus("all")}/>
                 <FBtn label={t(lang,"to_watch")} active={filterStatus==="a_voir"} color={C.muted} onClick={()=>setFilterStatus("a_voir")}/>
@@ -1771,7 +2138,7 @@ export default function App(){
       {chatOpen&&currentList&&<ChatPanel listId={currentId} listName={currentList.name} user={user} members={members} profiles={profiles} lang={lang} onClose={()=>setChatOpen(false)}/>}
       {listSettings&&currentList&&<ListSettingsModal list={currentList} user={user} lang={lang} onClose={()=>setListSettings(false)} onUpdated={()=>{loadLists();setListSettings(false);}}/>}
       {settingsOpen&&(
-        <SettingsPanel user={user} lang={lang} setLang={changeLang} onClose={()=>setSettingsOpen(false)}
+        <SettingsPanel user={user} lang={lang} setLang={changeLang} theme={theme} setTheme={changeTheme} onClose={()=>setSettingsOpen(false)}
           onUpdated={()=>api.getProfile(user.id).then(p=>{setProfiles(prev=>({...prev,[user.id]:p}));setConfirmDelete(p.confirm_delete!==false);})}/>
       )}
       {friendsOpen&&(
@@ -1783,7 +2150,7 @@ export default function App(){
       {dmFriend&&<DMPanel friend={dmFriend} user={user} profiles={profiles} lang={lang} onClose={()=>setDmFriend(null)}/>}
       {viewProfileId&&<PublicProfileModal userId={viewProfileId} currentUser={user} lang={lang} onClose={()=>setViewProfileId(null)}/>}
       {notifsOpen&&<NotificationsPanel user={user} lang={lang} onClose={()=>setNotifsOpen(false)}/>}
-      {searchOpen&&<SearchModal lang={lang} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
+      {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
       {watchlogOpen&&<WatchlogPage user={user} lang={lang} onClose={()=>setWatchlogOpen(false)}/>}
     </div>
   );

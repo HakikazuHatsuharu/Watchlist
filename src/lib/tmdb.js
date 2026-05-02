@@ -9,25 +9,55 @@ const IMG = "https://image.tmdb.org/t/p";
 export async function searchTMDB(query, type = "multi") {
   if (!query?.trim()) return [];
   try {
-    // Try TMDB first if key available
     if (TMDB_KEY) {
-      const url = `${TMDB}/search/${type}?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=fr-FR&page=1`;
-      const r = await fetch(url);
-      const d = await r.json();
-      return (d.results || []).slice(0, 12).map(item => ({
-        tmdb_id: item.id,
-        title: item.title || item.name,
-        poster_url: item.poster_path ? `${IMG}/w500${item.poster_path}` : "",
-        backdrop_url: item.backdrop_path ? `${IMG}/w780${item.backdrop_path}` : "",
-        overview: item.overview || "",
-        category: item.media_type === "tv" ? "serie" : "film",
-        year: (item.release_date || item.first_air_date || "").slice(0, 4),
-        rating: item.vote_average ? Math.round(item.vote_average / 2 * 10) / 10 : 0,
-      }));
+      // Search in French first, then English — merge and deduplicate
+      const [frRes, enRes] = await Promise.allSettled([
+        fetch(`${TMDB}/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=fr-FR&include_adult=false&page=1`).then(r=>r.json()),
+        fetch(`${TMDB}/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=en-US&include_adult=false&page=1`).then(r=>r.json()),
+      ]);
+
+      const seen = new Set();
+      const results = [];
+
+      const mapItem = (item, lang) => {
+        if (!item.id || seen.has(item.id)) return null;
+        if (item.media_type === "person") return null;
+        seen.add(item.id);
+        const isTv = item.media_type === "tv";
+        // Detect anime
+        const genreIds = item.genre_ids || [];
+        const isAnime = isTv && genreIds.includes(16);
+        const category = isAnime ? "anime" : isTv ? "serie" : "film";
+        return {
+          tmdb_id: item.id,
+          title: item.title || item.name,
+          original_title: item.original_title || item.original_name,
+          poster_url: item.poster_path ? `${IMG}/w500${item.poster_path}` : "",
+          backdrop_url: item.backdrop_path ? `${IMG}/w780${item.backdrop_path}` : "",
+          overview: item.overview || "",
+          category,
+          year: (item.release_date || item.first_air_date || "").slice(0, 4),
+          rating: item.vote_average ? Math.round(item.vote_average / 2 * 10) / 10 : 0,
+          popularity: item.popularity || 0,
+        };
+      };
+
+      for (const res of [frRes, enRes]) {
+        if (res.status === "fulfilled") {
+          for (const item of res.value.results || []) {
+            const mapped = mapItem(item);
+            if (mapped) results.push(mapped);
+          }
+        }
+      }
+
+      // Sort by popularity
+      results.sort((a, b) => b.popularity - a.popularity);
+      return results.slice(0, 15);
     }
-    // Fallback: iTunes + TVMaze
     return await fallbackSearch(query);
-  } catch {
+  } catch (e) {
+    console.error("TMDB search error:", e);
     return await fallbackSearch(query);
   }
 }
