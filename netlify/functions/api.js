@@ -146,9 +146,10 @@ async function getFriends(user) {
 
 async function sendFriendRequest(user, { addresseeId }) {
   if (!addresseeId || addresseeId === user.id) return err("Invalid user");
-  const existing = await db.from("friendships").select("id").or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).filter("requester_id", "in", `("${user.id}","${addresseeId}")`);
   const { error } = await db.from("friendships").insert({ id: genId(), requester_id: user.id, addressee_id: addresseeId, status: "pending" });
   if (error) return err(error.message);
+  // Send notification to addressee
+  await createNotif(db, { userId: addresseeId, type: "friend_request", fromId: user.id, fromName: user.username, content: `${user.username} vous a envoyé une demande d'ami`, link: "/friends" });
   return ok({ sent: true }, 201);
 }
 
@@ -347,6 +348,119 @@ async function searchPosters({ title, category }) {
   return ok(results.slice(0, 10));
 }
 
+// ─── Notifications ───────────────────────────────────────────────────────────
+async function createNotif(db, { userId, type, fromId, fromName, content, link="" }) {
+  const id = Math.random().toString(36).slice(2,9)+Date.now().toString(36);
+  await db.from("notifications").insert({ id, user_id:userId, type, from_id:fromId, from_name:fromName, content, link, read:false });
+}
+
+async function getNotifications(user) {
+  const { data } = await db.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending:false }).limit(50);
+  return ok(data || []);
+}
+
+async function markNotifsRead(user) {
+  await db.from("notifications").update({ read:true }).eq("user_id", user.id);
+  return ok({ done:true });
+}
+
+async function getUnreadCountNotifs(user) {
+  const { count:friendCount } = await db.from("notifications").select("id", { count:"exact", head:true }).eq("user_id", user.id).eq("read", false);
+  return ok({ count: friendCount || 0 });
+}
+
+// ─── Watchlog (perso sans liste) ─────────────────────────────────────────────
+async function getWatchlog(user) {
+  const { data } = await db.from("watchlog").select("*").eq("user_id", user.id).order("updated_at", { ascending:false });
+  return ok(data || []);
+}
+
+async function addToWatchlog(user, body) {
+  if (!body.title) return err("Title required");
+  const item = {
+    id: Math.random().toString(36).slice(2,9)+Date.now().toString(36),
+    user_id: user.id,
+    title: body.title,
+    category: body.category || "film",
+    status: body.status || "a_voir",
+    poster_url: body.poster_url || "",
+    tags: body.tags || [],
+    rating: body.rating || 0,
+    minutes: body.minutes || 0,
+    season: body.season || 0,
+    episode: body.episode || 0,
+    notes: body.notes || "",
+    tmdb_id: body.tmdb_id || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await db.from("watchlog").insert(item);
+  if (error) return err(error.message, 500);
+  return ok(item, 201);
+}
+
+async function updateWatchlogItem(user, id, body) {
+  const { data } = await db.from("watchlog").select("user_id").eq("id", id).single();
+  if (!data || data.user_id !== user.id) return unauthorized();
+  const updates = { ...body, updated_at: new Date().toISOString() };
+  delete updates.id; delete updates.user_id;
+  await db.from("watchlog").update(updates).eq("id", id);
+  return ok({ done:true });
+}
+
+async function deleteWatchlogItem(user, id) {
+  const { data } = await db.from("watchlog").select("user_id").eq("id", id).single();
+  if (!data || data.user_id !== user.id) return unauthorized();
+  await db.from("watchlog").delete().eq("id", id);
+  return ok({ deleted:true });
+}
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+async function getNews(query) {
+  const page = Math.max(1, parseInt(query.page||"1"));
+  const { data } = await db.from("news").select("*").order("created_at", { ascending:false }).range((page-1)*20, page*20-1);
+  return ok(data || []);
+}
+
+async function createNewsItem(user, body) {
+  if (!body.title?.trim() || !body.content?.trim()) return err("Title and content required");
+  const item = {
+    id: Math.random().toString(36).slice(2,9)+Date.now().toString(36),
+    author_id: user.id, author_name: user.username,
+    title: body.title.trim(), content: body.content.trim(),
+    cover_url: body.cover_url || "",
+    tags: body.tags || [],
+    tmdb_id: body.tmdb_id || null,
+  };
+  await db.from("news").insert(item);
+  return ok(item, 201);
+}
+
+async function likeNews(user, id) {
+  await db.from("news").update({ likes: db.raw("likes + 1") }).eq("id", id);
+  return ok({ done:true });
+}
+
+// ─── Home feed ────────────────────────────────────────────────────────────────
+async function getHomeFeed(user) {
+  // Get user profile for tag preferences
+  const { data: profile } = await db.from("profiles").select("*").eq("id", user.id).single();
+  // Get recent news
+  const { data: recentNews } = await db.from("news").select("*").order("created_at", { ascending:false }).limit(10);
+  // Get user watchlog for activity
+  const { data: recentActivity } = await db.from("watchlog").select("title,poster_url,status,category,tags").eq("user_id", user.id).order("updated_at", { ascending:false }).limit(5);
+  // Get friend activity (watchlog of friends)
+  const { data: friendships } = await db.from("friendships").select("requester_id,addressee_id").eq("status","accepted").or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+  const friendIds = (friendships||[]).map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+  let friendActivity = [];
+  if (friendIds.length) {
+    const { data } = await db.from("watchlog").select("user_id,title,poster_url,status,category,updated_at").in("user_id", friendIds).order("updated_at", { ascending:false }).limit(20);
+    // Enrich with usernames
+    const { data: friendProfiles } = await db.from("profiles").select("id,username,avatar_url").in("id", friendIds);
+    friendActivity = (data||[]).map(a => ({ ...a, username: friendProfiles?.find(p=>p.id===a.user_id)?.username || "?", avatar_url: friendProfiles?.find(p=>p.id===a.user_id)?.avatar_url || "" }));
+  }
+  return ok({ news: recentNews||[], friendActivity, myActivity: recentActivity||[] });
+}
+
 // ─── Moderation ─────────────────────────────────────────────────────────────────
 async function moderationAction(actor, { targetId, action, reason, newRole }) {
   const actorRole = await getGlobalRole(actor.id);
@@ -486,6 +600,31 @@ export const handler = async (event) => {
         if (method === "POST") return await sendMessage(user, listId, body);
       }
     }
+
+    // Notifications
+    if (segments[0] === "notifications") {
+      if (method === "GET" && segments.length === 1)          return await getNotifications(user);
+      if (method === "PUT" && segments[1] === "read")         return await markNotifsRead(user);
+      if (method === "GET" && segments[1] === "unread")       return await getUnreadCountNotifs(user);
+    }
+
+    // Watchlog
+    if (segments[0] === "watchlog") {
+      if (method === "GET"    && segments.length === 1)       return await getWatchlog(user);
+      if (method === "POST"   && segments.length === 1)       return await addToWatchlog(user, body);
+      if (method === "PUT"    && segments[1])                 return await updateWatchlogItem(user, segments[1], body);
+      if (method === "DELETE" && segments[1])                 return await deleteWatchlogItem(user, segments[1]);
+    }
+
+    // News
+    if (segments[0] === "news") {
+      if (method === "GET"  && segments.length === 1)         return await getNews(query);
+      if (method === "POST" && segments.length === 1)         return await createNewsItem(user, body);
+      if (method === "POST" && segments[2] === "like")        return await likeNews(user, segments[1]);
+    }
+
+    // Home
+    if (method === "GET" && segments[0] === "home")           return await getHomeFeed(user);
 
     return notFound();
   } catch (e) {

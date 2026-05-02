@@ -46,3 +46,13 @@ export function subscribeToFriendships(userId, cb) {
     .subscribe();
   return () => supabase.removeChannel(ch);
 }
+
+export function subscribeToNotifications(userId, cb) {
+  const ch = supabase.channel(`notifs-${userId}`)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "notifications",
+      filter: `user_id=eq.${userId}`,
+    }, (p) => cb(p.new))
+    .subscribe();
+  return () => supabase.removeChannel(ch);
+}

@@ -96,3 +96,22 @@ export const getPublicProfile = (id) => get(`/profiles/${id}/public`);
 export const modAction      = (data) => post("/mod/action", data);
 export const getModerationLog = () => get("/mod/log");
 export const deleteGlobalMsg  = (msgId) => del(`/mod/message/${msgId}`);
+
+// ─── Watchlog (perso, sans liste) ─────────────────────────────────────────────
+export const getWatchlog     = () => get("/watchlog");
+export const addToWatchlog   = (item) => post("/watchlog", item);
+export const updateWatchlog  = (id, data) => put(`/watchlog/${id}`, data);
+export const deleteWatchlog  = (id) => del(`/watchlog/${id}`);
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+export const getNotifications   = () => get("/notifications");
+export const markNotifsRead     = () => put("/notifications/read");
+export const getUnreadCount     = () => get("/notifications/unread");
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+export const getNews     = (page=1) => get("/news", { page });
+export const createNews  = (data) => post("/news", data);
+export const likeNews    = (id) => post(`/news/${id}/like`);
+
+// ─── Home feed (trending + perso) ────────────────────────────────────────────
+export const getHomeFeed = () => get("/home");
