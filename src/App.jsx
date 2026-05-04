@@ -679,6 +679,17 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
   const blank={title:"",category:"film",tags:[],poster_url:"",user_progress:{}};
   const [form,setForm]=useState(item?{...item}:prefill?{...blank,...prefill,user_progress:{}}:blank);
   const [saving,setSaving]=useState(false);
+
+  // Auto-fetch runtime from TMDB if not already set
+  useEffect(()=>{
+    const tmdbId=form.tmdb_id||(item?.tmdb_id)||(prefill?.tmdb_id);
+    const cat=form.category||item?.category||prefill?.category||"film";
+    if(tmdbId&&!form.runtime){
+      import('./lib/tmdb.js').then(m=>m.getTMDBDetails(tmdbId,cat)).then(details=>{
+        if(details?.runtime) setForm(f=>({...f,runtime:details.runtime}));
+      }).catch(()=>{});
+    }
+  },[]);
   const myProg=form.user_progress[user.id]||{status:"a_voir",minutes:"",season:"",episode:"",rating:0};
   const setMyProg=(k,v)=>setForm(f=>({...f,user_progress:{...f.user_progress,[user.id]:{...myProg,[k]:v}}}));
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -733,13 +744,51 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
           )}
           {myProg.status==="en_cours"&&(
             <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:10,padding:13}}>
-              <p style={{margin:"0 0 10px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"my_progress")}</p>
-              {(form.category==="film"||form.category==="short")?(
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <input type="number" min="0" value={myProg.minutes} onChange={e=>setMyProg("minutes",e.target.value)} placeholder="25" style={{...IS,width:80}}/>
-                  <span style={{color:C.muted,fontSize:13}}>{t(lang,"minutes")}</span>
-                </div>
-              ):(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <p style={{margin:0,fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"my_progress")}</p>
+                {form.runtime&&<span style={{fontSize:12,color:C.gold,fontWeight:600}}>⏱ {form.runtime} min au total</span>}
+              </div>
+              {(form.category==="film"||form.category==="short"||form.category==="documentary")?(()=>{
+                const maxMin = parseInt(form.runtime)||0;
+                const curMin = parseInt(myProg.minutes)||0;
+                const pct = maxMin>0 ? Math.round(curMin/maxMin*100) : null;
+                const handleMinutes = val => {
+                  const v = Math.max(0, maxMin>0 ? Math.min(parseInt(val)||0, maxMin) : parseInt(val)||0);
+                  if(maxMin>0 && v>=maxMin){
+                    // Auto-complete when reaching the end
+                    setMyProg("status","termine");
+                    setMyProg("minutes","");
+                  } else {
+                    setMyProg("minutes", String(v));
+                  }
+                };
+                return(
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {/* Slider */}
+                    <div>
+                      <input type="range" min="0" max={maxMin>0?maxMin:300} step="1"
+                        value={curMin}
+                        onChange={e=>handleMinutes(e.target.value)}
+                        style={{width:"100%",accentColor:C.gold,height:4}}/>
+                      <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
+                        <span style={{fontSize:12,color:C.muted}}>0</span>
+                        {pct!==null&&<span style={{fontSize:13,color:C.gold,fontWeight:700}}>{curMin} min <span style={{color:C.muted,fontWeight:400}}>({pct}%)</span></span>}
+                        <span style={{fontSize:12,color:C.muted}}>{maxMin>0?`${maxMin} min`:"?"}</span>
+                      </div>
+                    </div>
+                    {/* Manual input */}
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <input type="number" min="0" max={maxMin>0?maxMin:undefined}
+                        value={myProg.minutes}
+                        onChange={e=>handleMinutes(e.target.value)}
+                        placeholder="0" style={{...IS,width:90,textAlign:"center"}}/>
+                      <span style={{color:C.muted,fontSize:13}}>/ {maxMin>0?`${maxMin} min`:"? min"}</span>
+                      {maxMin===0&&<span style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>(durée inconnue)</span>}
+                    </div>
+                    {maxMin>0&&<p style={{margin:0,fontSize:11,color:C.muted}}>💡 Mettre {maxMin} min passe automatiquement en Terminé</p>}
+                  </div>
+                );
+              })():(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   <div><label style={LB}>{t(lang,"season")}</label><input type="number" min="1" value={myProg.season} onChange={e=>setMyProg("season",e.target.value)} placeholder="1" style={IS}/></div>
                   <div><label style={LB}>{t(lang,"episode")}</label><input type="number" min="1" value={myProg.episode} onChange={e=>setMyProg("episode",e.target.value)} placeholder="1" style={IS}/></div>
@@ -1779,13 +1828,39 @@ function WatchlogModal({item,lang,onSave,onClose}){
               </select>
             </div>
           </div>
-          {form.status==="en_cours"&&(form.category==="film"||form.category==="short"?
-            <div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" min="0" value={form.minutes} onChange={e=>set("minutes",parseInt(e.target.value)||0)} placeholder="25" style={{...IS,width:80}}/><span style={{color:C.muted,fontSize:13}}>minutes</span></div>:
+          {form.status==="en_cours"&&(form.category==="film"||form.category==="short"||form.category==="documentary"?(()=>{
+            const maxMin = parseInt(form.runtime)||0;
+            const curMin = parseInt(form.minutes)||0;
+            const pct = maxMin>0 ? Math.round(curMin/maxMin*100) : null;
+            const handleMin = val => {
+              const v = Math.max(0, maxMin>0 ? Math.min(parseInt(val)||0, maxMin) : parseInt(val)||0);
+              if(maxMin>0 && v>=maxMin){ set("status","termine"); set("minutes",0); }
+              else set("minutes",v);
+            };
+            return(
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <input type="range" min="0" max={maxMin>0?maxMin:300} step="1" value={curMin}
+                  onChange={e=>handleMin(e.target.value)}
+                  style={{width:"100%",accentColor:C.gold}}/>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <span style={{fontSize:12,color:C.muted}}>0</span>
+                  {pct!==null&&<span style={{fontSize:13,color:C.gold,fontWeight:700}}>{curMin} min ({pct}%)</span>}
+                  <span style={{fontSize:12,color:C.muted}}>{maxMin>0?`${maxMin} min`:"?"}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input type="number" min="0" max={maxMin>0?maxMin:undefined} value={form.minutes}
+                    onChange={e=>handleMin(e.target.value)}
+                    placeholder="0" style={{...IS,width:90,textAlign:"center"}}/>
+                  <span style={{color:C.muted,fontSize:13}}>/ {maxMin>0?`${maxMin} min`:"? min"}</span>
+                </div>
+              </div>
+            );
+          })():(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div><label style={LB}>Saison</label><input type="number" min="1" value={form.season} onChange={e=>set("season",parseInt(e.target.value)||0)} placeholder="1" style={IS}/></div>
               <div><label style={LB}>Épisode</label><input type="number" min="1" value={form.episode} onChange={e=>set("episode",parseInt(e.target.value)||0)} placeholder="1" style={IS}/></div>
             </div>
-          )}
+          ))}
           {form.status==="termine"&&<div><label style={LB}>Note</label><Stars value={form.rating||0} onChange={v=>set("rating",v)} size={24}/></div>}
           <div><label style={LB}>Notes perso</label><textarea value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS,resize:"vertical",fontFamily:"inherit"}} placeholder="Tes impressions…"/></div>
           <div><label style={LB}>Tags</label><TagInput tags={form.tags||[]} onChange={v=>set("tags",v)} lang={lang}/></div>
