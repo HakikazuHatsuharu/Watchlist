@@ -20,16 +20,16 @@ function useIsMobile(){
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const C = {
-  bg:"#0b0b18",surface:"#111128",card:"#181830",border:"rgba(255,255,255,0.07)",
-  gold:"#C9A84C",blue:"#60A5FA",text:"#F0EBE0",muted:"#5C6070",
+  bg:"#0b0b18",surface:"#111128",card:"#1c1c38",border:"rgba(255,255,255,0.12)",
+  gold:"#C9A84C",blue:"#60A5FA",text:"#F0EBE0",muted:"#8B90A0",
   success:"#10B981",warning:"#F59E0B",danger:"#F87171",purple:"#A78BFA",
 };
 const AV_COLORS = ["#C9A84C","#60A5FA","#A78BFA","#10B981","#F87171","#FB923C","#F472B6"];
-const IS = {background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:13,boxSizing:"border-box",outline:"none",fontFamily:"inherit",width:"100%"};
+const IS = {background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.15)`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:14,boxSizing:"border-box",outline:"none",fontFamily:"inherit",width:"100%"};
 const BP = {background:C.gold,color:"#0b0b18",border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
 const BS = {background:"transparent",color:C.muted,border:`1px solid rgba(255,255,255,0.12)`,borderRadius:8,padding:"9px 18px",fontSize:13,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
 const BD = {background:"rgba(248,113,113,0.12)",color:C.danger,border:`1px solid rgba(248,113,113,0.3)`,borderRadius:8,padding:"9px 18px",fontSize:13,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
-const LB = {display:"block",fontSize:10,color:C.muted,marginBottom:4,letterSpacing:0.8,textTransform:"uppercase"};
+const LB = {display:"block",fontSize:12,color:C.muted,marginBottom:4,letterSpacing:0.8,textTransform:"uppercase"};
 
 const CATEGORIES = [
   {id:"film",      label:"🎬 Film",         short:"Film"},
@@ -49,7 +49,7 @@ const GLOBAL_ROLES = {
   admin:     {label:"⚡ Admin",      color:"#F87171",level:4,bg:"rgba(248,113,113,0.1)"},
   moderator: {label:"🛡 Modérateur", color:"#60A5FA",level:3,bg:"rgba(96,165,250,0.1)"},
   vip:       {label:"💎 VIP",        color:"#A78BFA",level:2,bg:"rgba(167,139,250,0.1)"},
-  user:      {label:"",              color:"#5C6070",level:1,bg:"transparent"},
+  user:      {label:"",              color:"#8B90A0",level:1,bg:"transparent"},
 };
 function canModerate(r){return["superadmin","admin","moderator"].includes(r);}
 function canAdmin(r){return["superadmin","admin"].includes(r);}
@@ -65,37 +65,37 @@ const BADGES = [
 const THEMES = {
   dark: {
     name:"Sombre",icon:"🌑",
-    bg:"#0b0b18",surface:"#111128",card:"#181830",
-    border:"rgba(255,255,255,0.07)",text:"#F0EBE0",muted:"#5C6070",
+    bg:"#0b0b18",surface:"#111128",card:"#1c1c38",
+    border:"rgba(255,255,255,0.12)",text:"#F0EBE0",muted:"#8B90A0",
     gold:"#C9A84C",accent:"#C9A84C",
   },
   discord: {
     name:"Discord",icon:"💬",
-    bg:"#313338",surface:"#2b2d31",card:"#1e1f22",
+    bg:"#313338",surface:"#2b2d31",card:"#22242a",
     border:"rgba(255,255,255,0.06)",text:"#dbdee1",muted:"#80848e",
     gold:"#5865f2",accent:"#5865f2",
   },
   midnight: {
     name:"Minuit",icon:"🌌",
-    bg:"#060612",surface:"#0d0d20",card:"#12122a",
+    bg:"#060612",surface:"#0d0d20",card:"#171730",
     border:"rgba(100,80,255,0.15)",text:"#e8e0ff",muted:"#6060a0",
     gold:"#8b5cf6",accent:"#8b5cf6",
   },
   forest: {
     name:"Forêt",icon:"🌿",
-    bg:"#0a1208",surface:"#0f1a0d",card:"#152212",
+    bg:"#0a1208",surface:"#0f1a0d",card:"#192a16",
     border:"rgba(50,200,80,0.12)",text:"#d4edda",muted:"#4a7055",
     gold:"#4ade80",accent:"#4ade80",
   },
   sakura: {
     name:"Sakura",icon:"🌸",
-    bg:"#1a0a14",surface:"#220d1a",card:"#2a1020",
+    bg:"#1a0a14",surface:"#220d1a",card:"#321428",
     border:"rgba(255,100,150,0.12)",text:"#fde8f0",muted:"#a05070",
     gold:"#f472b6",accent:"#f472b6",
   },
   ocean: {
     name:"Océan",icon:"🌊",
-    bg:"#060d1a",surface:"#0a1428",card:"#0e1a34",
+    bg:"#060d1a",surface:"#0a1428",card:"#122040",
     border:"rgba(30,150,255,0.12)",text:"#ddeeff",muted:"#4070a0",
     gold:"#38bdf8",accent:"#38bdf8",
   },
@@ -152,14 +152,14 @@ function GlobalRoleBadge({role,size="normal"}){
   const r=GLOBAL_ROLES[role];
   if(!r||role==="user") return null;
   const fs=size==="small"?9:size==="large"?13:11;
-  const pad=size==="small"?"1px 5px":size==="large"?"3px 10px":"2px 7px";
+  const pad=size==="small"?"2px 7px":size==="large"?"4px 12px":"3px 9px";
   return<span style={{fontSize:fs,color:r.color,background:r.bg,padding:pad,borderRadius:99,border:`1px solid ${r.color}30`,fontWeight:600,whiteSpace:"nowrap"}}>{r.label}</span>;
 }
 
 function NotifBadge({count}){
   if(!count||count<=0) return null;
   return(
-    <span style={{position:"absolute",top:-4,right:-4,background:C.danger,color:"white",fontSize:9,fontWeight:700,minWidth:16,height:16,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",lineHeight:1,border:`1.5px solid ${C.bg}`}}>
+    <span style={{position:"absolute",top:-4,right:-4,background:C.danger,color:"white",fontSize:11,fontWeight:700,minWidth:16,height:16,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",lineHeight:1,border:`1.5px solid ${C.bg}`}}>
       {count>99?"99+":count}
     </span>
   );
@@ -167,7 +167,7 @@ function NotifBadge({count}){
 
 function FBtn({label,active,color,onClick}){
   const c=color||C.gold;
-  return<button onClick={onClick} style={{background:active?`${c}18`:"transparent",border:`1px solid ${active?`${c}50`:C.border}`,borderRadius:99,padding:"4px 11px",fontSize:11,color:active?c:C.muted,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}>{label}</button>;
+  return<button onClick={onClick} style={{background:active?`${c}18`:"transparent",border:`1px solid ${active?`${c}50`:C.border}`,borderRadius:99,padding:"5px 13px",fontSize:12,color:active?c:C.text,fontWeight:active?700:400,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}>{label}</button>;
 }
 
 function LangToggle({lang,setLang}){
@@ -397,7 +397,7 @@ function SearchModal({lang,onSelect,onClose,user}){
           <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>×</button>
         </div>
         <div style={{overflowY:"auto",flex:1}}>
-          {loading&&<p style={{textAlign:"center",color:C.muted,padding:20}}>…</p>}
+          {loading&&<p style={{textAlign:"center",color:C.text,opacity:0.6,padding:20,fontSize:14}}>…</p>}
           {!loading&&results.length===0&&q.trim()&&(
             <div style={{textAlign:"center",color:C.muted,padding:30}}>
               <div style={{fontSize:32,marginBottom:8}}>🎬</div>
@@ -415,9 +415,9 @@ function SearchModal({lang,onSelect,onClose,user}){
                   :<span style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:18,opacity:0.2}}>🎬</span>}
               </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:14,color:C.text,fontWeight:600}}>{r.title}</div>
+                <div style={{fontSize:15,color:C.text,fontWeight:700}}>{r.title}</div>
                 <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
-                  <span style={{fontSize:11,color:C.gold}}>{CAT_SHORT[r.category]||r.category}</span>
+                  <span style={{fontSize:12,color:C.gold,fontWeight:600}}>{CAT_SHORT[r.category]||r.category}</span>
                   {r.year&&<span style={{fontSize:11,color:C.muted}}>{r.year}</span>}
                   {r.rating>0&&<span style={{fontSize:11,color:C.warning}}>⭐ {r.rating}</span>}
                 </div>
@@ -478,7 +478,7 @@ function PosterPicker({title,category,currentUrl,onSelect,lang}){
       {errMsg&&<p style={{fontSize:11,color:C.danger,margin:"0 0 8px"}}>⚠ {errMsg}</p>}
       {showGrid&&results.length>0&&(
         <div>
-          <p style={{margin:"0 0 7px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"poster_choose")}</p>
+          <p style={{margin:"0 0 7px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"poster_choose")}</p>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(68px,1fr))",gap:7}}>
             {results.map((r,i)=>(
               <div key={i} onClick={()=>{onSelect(r.url);setShowGrid(false);}} title={r.label} style={{cursor:"pointer",borderRadius:6,overflow:"hidden",aspectRatio:"2/3",background:"rgba(255,255,255,0.04)",border:`2px solid ${currentUrl===r.url?C.gold:"transparent"}`}}>
@@ -535,8 +535,8 @@ function NotificationsPanel({user,lang,onClose}){
             <div key={n.id} style={{display:"flex",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`,opacity:n.read?0.5:1}}>
               <span style={{fontSize:20}}>{icons[n.type]||"🔔"}</span>
               <div style={{flex:1}}>
-                <p style={{margin:0,fontSize:13,color:C.text}}>{n.content}</p>
-                <p style={{margin:"3px 0 0",fontSize:10,color:C.muted}}>{new Date(n.created_at).toLocaleDateString("fr-FR")}</p>
+                <p style={{margin:0,fontSize:14,color:C.text,fontWeight:500}}>{n.content}</p>
+                <p style={{margin:"4px 0 0",fontSize:12,color:C.text,opacity:0.65}}>{new Date(n.created_at).toLocaleDateString("fr-FR")}</p>
               </div>
               {!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:C.gold,flexShrink:0,marginTop:4}}/>}
             </div>
@@ -581,8 +581,8 @@ function LeaderboardModal({item,members,profiles,lang,onClose}){
                 <span style={{fontSize:18,width:24,textAlign:"center"}}>{medals[rank]||`${rank+1}`}</span>
                 <Avatar username={row.username} avatarUrl={row.profile.avatar_url} index={row.index} size={32} createdAt={row.profile.created_at}/>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,color:C.text,fontWeight:600}}>{row.username}</div>
-                  <div style={{fontSize:11,color:st.color}}>{st.label}{detail}</div>
+                  <div style={{fontSize:14,color:C.text,fontWeight:700}}>{row.username}</div>
+                  <div style={{fontSize:14,color:st.color,fontWeight:700}}>{st.label}{detail}</div>
                 </div>
                 {row.prog.rating>0&&<Stars value={row.prog.rating} size={12}/>}
               </div>
@@ -617,31 +617,31 @@ function ItemCard({item,user,members,profiles,onEdit,onDelete,lang,confirmDelete
             :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,opacity:0.1}}>🎬</div>}
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(11,11,24,0.65) 0%,transparent 55%)"}}/>
           <div style={{position:"absolute",top:8,left:8}}>
-            <span style={{fontSize:9,fontWeight:700,letterSpacing:0.8,color:C.gold,background:"rgba(201,168,76,0.15)",padding:"2px 7px",borderRadius:99,border:"1px solid rgba(201,168,76,0.3)"}}>{(CAT_SHORT[item.category]||item.category).toUpperCase()}</span>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:0.5,color:C.gold,background:"rgba(201,168,76,0.2)",padding:"3px 9px",borderRadius:99,border:"1px solid rgba(201,168,76,0.5)"}}>{(CAT_SHORT[item.category]||item.category).toUpperCase()}</span>
           </div>
           <div style={{position:"absolute",top:8,right:8}}>
-            <span style={{fontSize:9,background:`${meta.color}20`,color:meta.color,padding:"2px 7px",borderRadius:99,border:`1px solid ${meta.color}40`}}>{meta.label}</span>
+            <span style={{fontSize:11,fontWeight:700,background:`${meta.color}25`,color:meta.color,padding:"3px 9px",borderRadius:99,border:`1px solid ${meta.color}60`}}>{meta.label}</span>
           </div>
-          <div style={{position:"absolute",bottom:8,right:8,fontSize:10,color:"rgba(255,255,255,0.35)",background:"rgba(0,0,0,0.4)",padding:"2px 7px",borderRadius:99}}>🏆 Classement</div>
+          <div style={{position:"absolute",bottom:8,right:8,fontSize:12,color:"rgba(255,255,255,0.35)",background:"rgba(0,0,0,0.4)",padding:"2px 7px",borderRadius:99}}>🏆 Classement</div>
         </div>
         {/* Body */}
         <div style={{padding:"11px 13px",flex:1,display:"flex",flexDirection:"column",gap:7}}>
-          <h3 style={{margin:0,fontSize:14,fontFamily:"'Playfair Display',serif",color:C.text,lineHeight:1.3}}>{item.title}</h3>
+          <h3 style={{margin:0,fontSize:15,fontFamily:"'Playfair Display',serif",color:C.text,lineHeight:1.35,fontWeight:700}}>{item.title}</h3>
           {item.tags?.length>0&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-              {item.tags.slice(0,3).map(tg=><span key={tg} style={{fontSize:9,color:"rgba(201,168,76,0.6)",background:"rgba(201,168,76,0.06)",padding:"1px 6px",borderRadius:99}}>#{tg}</span>)}
-              {item.tags.length>3&&<span style={{fontSize:9,color:C.muted}}>+{item.tags.length-3}</span>}
+              {item.tags.slice(0,3).map(tg=><span key={tg} style={{fontSize:11,fontWeight:600,color:"rgba(201,168,76,0.9)",background:"rgba(201,168,76,0.12)",padding:"2px 8px",borderRadius:99,border:"1px solid rgba(201,168,76,0.25)"}}>#{tg}</span>)}
+              {item.tags.length>3&&<span style={{fontSize:11,color:C.muted}}>+{item.tags.length-3}</span>}
             </div>
           )}
           {/* My progress - Spotify style */}
           <div style={{marginTop:"auto",paddingTop:7,borderTop:`1px solid ${C.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:myProg.status==="en_cours"?4:0}}>
-              <span style={{fontSize:11,color:meta.color,fontWeight:600}}>{meta.label}</span>
+              <span style={{fontSize:13,color:meta.color,fontWeight:700}}>{meta.label}</span>
               {myProg.status==="en_cours"&&item.category==="film"&&myProg.minutes&&(
-                <span style={{fontSize:10,color:C.muted}}>{myProg.minutes} min</span>
+                <span style={{fontSize:12,color:C.muted}}>{myProg.minutes} min</span>
               )}
               {myProg.status==="en_cours"&&item.category!=="film"&&(myProg.season||myProg.episode)&&(
-                <span style={{fontSize:10,color:C.muted}}>S{myProg.season||"?"}·E{myProg.episode||"?"}</span>
+                <span style={{fontSize:12,color:C.muted}}>S{myProg.season||"?"}·E{myProg.episode||"?"}</span>
               )}
             </div>
             {/* Progress bar for films */}
@@ -661,7 +661,7 @@ function ItemCard({item,user,members,profiles,onEdit,onDelete,lang,confirmDelete
         </div>
         {/* Footer */}
         <div style={{padding:"6px 13px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.12)"}}>{t(lang,"by")} {item.added_by_name}</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.12)"}}>{t(lang,"by")} {item.added_by_name}</span>
           <div style={{display:"flex",gap:2}}>
             <button onClick={()=>onEdit(item)} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:12,padding:"3px 5px"}}>✏️</button>
             {(item.added_by===user.id||isOwnerOrMod)&&<button onClick={handleDelete} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:12,padding:"3px 5px"}}>🗑️</button>}
@@ -733,7 +733,7 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
           )}
           {myProg.status==="en_cours"&&(
             <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:10,padding:13}}>
-              <p style={{margin:"0 0 10px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"my_progress")}</p>
+              <p style={{margin:"0 0 10px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>{t(lang,"my_progress")}</p>
               {(form.category==="film"||form.category==="short")?(
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <input type="number" min="0" value={myProg.minutes} onChange={e=>setMyProg("minutes",e.target.value)} placeholder="25" style={{...IS,width:80}}/>
@@ -788,15 +788,15 @@ function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder
               {!isMe&&<Avatar username={grp.username} avatarUrl={prof.avatar_url} index={Math.max(mi,0)} size={32} createdAt={prof.created_at}/>}
               <div style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",maxWidth:"75%"}}>
                 {!isMe&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                  <span style={{fontSize:12,fontWeight:600,color}}>{grp.username}</span>
+                  <span style={{fontSize:13,fontWeight:700,color}}>{grp.username}</span>
                   {prof.global_role&&prof.global_role!=="user"&&<GlobalRoleBadge role={prof.global_role} size="small"/>}
                 </div>}
                 {grp.items.map(msg=>(
-                  <div key={msg.id} style={{background:isMe?`${C.gold}20`:"rgba(255,255,255,0.06)",border:`1px solid ${isMe?`${C.gold}35`:C.border}`,borderRadius:isMe?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"7px 12px",fontSize:13,color:C.text,wordBreak:"break-word",lineHeight:1.45,marginBottom:2}}>
+                  <div key={msg.id} style={{background:isMe?`${C.gold}20`:"rgba(255,255,255,0.06)",border:`1px solid ${isMe?`${C.gold}35`:C.border}`,borderRadius:isMe?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"8px 13px",fontSize:14,color:C.text,wordBreak:"break-word",lineHeight:1.5,marginBottom:2}}>
                     {msg.content}
                   </div>
                 ))}
-                <span style={{fontSize:10,color:C.muted,marginTop:2}}>
+                <span style={{fontSize:12,color:C.muted,marginTop:2}}>
                   {new Date(grp.items[grp.items.length-1].created_at).toLocaleTimeString(lang==="fr"?"fr-FR":"en-US",{hour:"2-digit",minute:"2-digit"})}
                 </span>
               </div>
@@ -941,12 +941,12 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
         <div style={{padding:"0 22px 22px",display:"flex",flexDirection:"column",gap:18}}>
           {/* Bio */}
           {data.bio&&<div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 14px",borderLeft:`3px solid ${C.gold}50`}}>
-            <p style={{margin:0,fontSize:13,color:C.text,lineHeight:1.6,fontStyle:"italic"}}>"{data.bio}"</p>
+            <p style={{margin:0,fontSize:14,color:C.text,lineHeight:1.65,fontStyle:"italic"}}>"{data.bio}"</p>
           </div>}
 
           {/* Stats */}
           <div>
-            <p style={{margin:"0 0 8px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>📊 Statistiques</p>
+            <p style={{margin:"0 0 8px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>📊 Statistiques</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
               {[
                 {label:"🎬 Films",value:data.stats?.filmsWatched||0,color:C.gold},
@@ -955,8 +955,8 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
                 {label:"⭐ Moy.",value:data.stats?.avgRating?data.stats.avgRating.toFixed(1):"—",color:C.warning},
               ].map(s=>(
                 <div key={s.label} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:`1px solid ${C.border}`}}>
-                  <div style={{fontSize:17,fontWeight:700,color:s.color}}>{s.value}</div>
-                  <div style={{fontSize:9,color:C.muted,marginTop:2,letterSpacing:0.3}}>{s.label}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.value}</div>
+                  <div style={{fontSize:12,color:C.text,opacity:0.7,marginTop:3,letterSpacing:0.3,fontWeight:500}}>{s.label}</div>
                 </div>
               ))}
             </div>
@@ -964,7 +964,7 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
 
           {/* Fav tags */}
           {data.favTags?.length>0&&<div>
-            <p style={{margin:"0 0 8px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>🏷 Tags favoris</p>
+            <p style={{margin:"0 0 8px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>🏷 Tags favoris</p>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
               {data.favTags.map(tag=><span key={tag} style={{background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:99,padding:"3px 10px",fontSize:11,color:C.gold}}>#{tag}</span>)}
             </div>
@@ -972,7 +972,7 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
 
           {/* Public lists */}
           <div>
-            <p style={{margin:"0 0 8px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>📋 Listes publiques ({data.publicLists?.length||0})</p>
+            <p style={{margin:"0 0 8px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>📋 Listes publiques ({data.publicLists?.length||0})</p>
             {!data.publicLists?.length
               ?<p style={{fontSize:12,color:"rgba(255,255,255,0.2)"}}>Aucune liste publique.</p>
               :<div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -991,7 +991,7 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
 
           {/* Moderation */}
           {canMod&&<div style={{background:"rgba(248,113,113,0.06)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:12,padding:"14px 16px"}}>
-            <p style={{margin:"0 0 10px",fontSize:10,color:C.danger,textTransform:"uppercase",letterSpacing:1.2}}>🛡 Modération</p>
+            <p style={{margin:"0 0 10px",fontSize:12,color:C.danger,textTransform:"uppercase",letterSpacing:1.2}}>🛡 Modération</p>
             <input value={modReason} onChange={e=>setModReason(e.target.value)} placeholder="Raison…" style={{...IS,fontSize:12,marginBottom:8}}/>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               <button onClick={()=>doModAction("warn")} style={{...BS,fontSize:11,padding:"5px 10px",color:C.warning,borderColor:"rgba(245,158,11,0.3)"}}>⚠️ Avertir</button>
@@ -1010,7 +1010,7 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
             {modMsg&&<p style={{fontSize:11,color:modMsg.startsWith("✓")?C.success:C.danger,margin:"6px 0 0"}}>{modMsg}</p>}
           </div>}
 
-          <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.15)",textAlign:"center"}}>
+          <p style={{margin:0,fontSize:13,color:C.text,opacity:0.45,textAlign:"center"}}>
             Membre depuis {new Date(data.created_at).toLocaleDateString(lang==="fr"?"fr-FR":"en-US",{year:"numeric",month:"long"})}
           </p>
         </div>
@@ -1059,7 +1059,7 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
         <div style={{padding:16,display:"flex",flexDirection:"column",gap:16}}>
           {/* Search */}
           <div>
-            <p style={{margin:"0 0 6px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>Ajouter un ami</p>
+            <p style={{margin:"0 0 6px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>Ajouter un ami</p>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
               <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSearch()} placeholder="Chercher un utilisateur…" style={{...IS,flex:1}}/>
               <button onClick={doSearch} style={{...BS,padding:"8px 12px",fontSize:12}}>🔍</button>
@@ -1081,11 +1081,11 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
 
           {/* Pending */}
           {pending.length>0&&<div>
-            <p style={{margin:"0 0 8px",fontSize:10,color:C.warning,textTransform:"uppercase",letterSpacing:1}}>Demandes reçues ({pending.length})</p>
+            <p style={{margin:"0 0 8px",fontSize:12,color:C.warning,textTransform:"uppercase",letterSpacing:1}}>Demandes reçues ({pending.length})</p>
             {pending.map(f=>(
               <div key={f.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                 <Avatar username={f.other.username} avatarUrl={profiles[f.other.id]?.avatar_url} index={0} size={28} onClick={()=>onViewProfile&&onViewProfile(f.other.id)}/>
-                <span style={{flex:1,fontSize:13,color:C.text}}>{f.other.username}</span>
+                <span style={{flex:1,fontSize:14,color:C.text,fontWeight:600}}>{f.other.username}</span>
                 <button onClick={()=>accept(f.id)} style={{...BP,fontSize:11,padding:"4px 10px"}}>✓</button>
                 <button onClick={()=>reject(f.id)} style={{...BS,fontSize:11,padding:"4px 8px"}}>✗</button>
               </div>
@@ -1094,7 +1094,7 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
 
           {/* Friends list */}
           <div>
-            <p style={{margin:"0 0 8px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>Amis ({accepted.length})</p>
+            <p style={{margin:"0 0 8px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1}}>Amis ({accepted.length})</p>
             {accepted.length===0&&<p style={{fontSize:12,color:"rgba(255,255,255,0.15)"}}>Aucun ami pour l'instant.</p>}
             {accepted.map(f=>{
               const prof=profiles[f.other.id]||{};
@@ -1103,8 +1103,8 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
                 <div key={f.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                   <Avatar username={f.other.username} avatarUrl={prof.avatar_url} index={0} size={32} createdAt={f.other.created_at} onClick={()=>onViewProfile&&onViewProfile(f.other.id)}/>
                   <div style={{flex:1,cursor:"pointer"}} onClick={()=>onViewProfile&&onViewProfile(f.other.id)}>
-                    <div style={{fontSize:13,color:C.text}}>{f.other.username}</div>
-                    <div style={{fontSize:10,color:badge.color}}>{badge.icon} {badge.label}</div>
+                    <div style={{fontSize:14,color:C.text,fontWeight:600}}>{f.other.username}</div>
+                    <div style={{fontSize:12,color:badge.color}}>{badge.icon} {badge.label}</div>
                   </div>
                   <button onClick={()=>onOpenDM(f.other)} style={{...BS,fontSize:11,padding:"4px 10px"}}>💬</button>
                   <button onClick={()=>remove(f.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.2)",fontSize:14,padding:"4px"}}>×</button>
@@ -1245,7 +1245,7 @@ function SettingsPanel({user,lang,setLang,theme,setTheme,onClose,onUpdated}){
             <span style={{position:"absolute",bottom:0,right:0,fontSize:18}} title={badge.label}>{badge.icon}</span>
           </div>
           <div style={{flex:1}}>
-            <p style={{margin:"0 0 4px",fontSize:14,fontWeight:600,color:C.text}}>{user.username}</p>
+            <p style={{margin:"0 0 4px",fontSize:16,fontWeight:700,color:C.text}}>{user.username}</p>
             <p style={{margin:"0 0 8px",fontSize:11,color:badge.color}}>{badge.icon} {badge.label}</p>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>fileRef.current?.click()} style={{...BS,fontSize:11,padding:"4px 10px"}}>📁 Importer</button>
@@ -1258,7 +1258,7 @@ function SettingsPanel({user,lang,setLang,theme,setTheme,onClose,onUpdated}){
           <div>
             <label style={LB}>Bio (200 car. max)</label>
             <textarea value={profile.bio||""} onChange={e=>setProfile(p=>({...p,bio:e.target.value.slice(0,200)}))} rows={2} style={{...IS,resize:"vertical",fontFamily:"inherit"}} placeholder="Dis quelque chose sur toi…"/>
-            <p style={{margin:"3px 0 0",fontSize:10,color:C.muted,textAlign:"right"}}>{(profile.bio||"").length}/200</p>
+            <p style={{margin:"4px 0 0",fontSize:12,color:C.text,opacity:0.65,textAlign:"right"}}>{(profile.bio||"").length}/200</p>
           </div>
           <div>
             <label style={LB}>Genre</label>
@@ -1414,8 +1414,8 @@ function ListSettingsModal({list,user,lang,profiles,onClose,onUpdated,onDeleted}
                 <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:`1px solid ${m.role==="owner"?"rgba(201,168,76,0.2)":C.border}`}}>
                   <Avatar username={m.username} avatarUrl={prof.avatar_url} index={i} size={34} createdAt={prof.created_at}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,color:C.text,fontWeight:isMe?600:400}}>{m.username}{isMe&&<span style={{fontSize:10,color:C.muted}}> (toi)</span>}</div>
-                    {m.role!=="member"&&<span style={{fontSize:10,color:rm.color,background:`${rm.color}18`,padding:"1px 7px",borderRadius:99,border:`1px solid ${rm.color}30`}}>{rm.label}</span>}
+                    <div style={{fontSize:13,color:C.text,fontWeight:isMe?600:400}}>{m.username}{isMe&&<span style={{fontSize:12,color:C.muted}}> (toi)</span>}</div>
+                    {m.role!=="member"&&<span style={{fontSize:12,color:rm.color,background:`${rm.color}18`,padding:"1px 7px",borderRadius:99,border:`1px solid ${rm.color}30`}}>{rm.label}</span>}
                   </div>
                   {canManage&&!isMe&&m.role!=="owner"&&(
                     <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -1521,11 +1521,11 @@ function HomePage({user,profiles,lang,isMob,onOpenList,onViewProfile,onSearch,on
                     {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                       :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,opacity:0.1}}>🎬</div>}
                     <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,${C.bg}cc 0%,transparent 50%)`}}/>
-                    {item.rating>0&&<div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.6)",borderRadius:99,padding:"2px 7px",fontSize:10,color:C.warning}}>⭐ {item.rating}</div>}
+                    {item.rating>0&&<div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.6)",borderRadius:99,padding:"2px 7px",fontSize:12,color:C.warning}}>⭐ {item.rating}</div>}
                   </div>
                   <div style={{padding:"8px 10px"}}>
-                    <p style={{margin:0,fontSize:12,color:C.text,fontWeight:600,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
-                    <p style={{margin:"3px 0 0",fontSize:10,color:C.muted}}>{CAT_LABEL[item.category]||item.category} {item.year&&`· ${item.year}`}</p>
+                    <p style={{margin:0,fontSize:13,color:C.text,fontWeight:700,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
+                    <p style={{margin:"4px 0 0",fontSize:12,color:C.text,opacity:0.65}}>{CAT_LABEL[item.category]||item.category} {item.year&&`· ${item.year}`}</p>
                   </div>
                 </div>
               ))}
@@ -1546,11 +1546,11 @@ function HomePage({user,profiles,lang,isMob,onOpenList,onViewProfile,onSearch,on
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                     <Avatar username={a.username} avatarUrl={a.avatar_url} index={i} size={34} onClick={()=>onViewProfile(a.user_id)}/>
                     <div style={{flex:1}}>
-                      <span style={{fontSize:13,color:C.text,fontWeight:600,cursor:"pointer"}} onClick={()=>onViewProfile(a.user_id)}>{a.username}</span>
-                      <span style={{fontSize:13,color:C.muted}}> a mis </span>
-                      <span style={{fontSize:13,color:C.text,fontWeight:600}}>{a.title}</span>
-                      <span style={{fontSize:13,color:C.muted}}> en </span>
-                      <span style={{fontSize:13,color:st.color,fontWeight:600}}>{st.label}</span>
+                      <span style={{fontSize:14,color:C.text,fontWeight:700,cursor:"pointer"}} onClick={()=>onViewProfile(a.user_id)}>{a.username}</span>
+                      <span style={{fontSize:14,color:C.text,opacity:0.7}}> a mis </span>
+                      <span style={{fontSize:14,color:C.text,fontWeight:700}}>{a.title}</span>
+                      <span style={{fontSize:14,color:C.text,opacity:0.7}}> en </span>
+                      <span style={{fontSize:14,color:st.color,fontWeight:700}}>{st.label}</span>
                     </div>
                     {a.poster_url&&(
                       <img src={a.poster_url} alt="" style={{width:36,height:52,objectFit:"cover",borderRadius:5,cursor:"pointer",border:`1px solid ${C.border}`}}
@@ -1575,8 +1575,8 @@ function HomePage({user,profiles,lang,isMob,onOpenList,onViewProfile,onSearch,on
                     <h4 style={{margin:"0 0 6px",fontSize:14,color:C.text,fontFamily:"'Playfair Display',serif",lineHeight:1.3}}>{n.title}</h4>
                     <p style={{margin:"0 0 8px",fontSize:11,color:C.muted,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{n.content}</p>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:10,color:C.muted}}>par {n.author_name}</span>
-                      <span style={{fontSize:10,color:C.muted,marginLeft:"auto"}}>❤️ {n.likes}</span>
+                      <span style={{fontSize:12,color:C.muted}}>par {n.author_name}</span>
+                      <span style={{fontSize:12,color:C.muted,marginLeft:"auto"}}>❤️ {n.likes}</span>
                     </div>
                   </div>
                 </div>
@@ -1728,12 +1728,12 @@ function WatchlogPage({user,lang,onClose}){
                   {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                     :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,opacity:0.1}}>🎬</div>}
                   <div style={{position:"absolute",top:8,right:8}}>
-                    <span style={{fontSize:9,background:`${st.color}20`,color:st.color,padding:"2px 7px",borderRadius:99,border:`1px solid ${st.color}40`}}>{st.label}</span>
+                    <span style={{fontSize:11,background:`${st.color}20`,color:st.color,padding:"2px 7px",borderRadius:99,border:`1px solid ${st.color}40`}}>{st.label}</span>
                   </div>
                 </div>
                 <div style={{padding:"9px 11px",flex:1,display:"flex",flexDirection:"column",gap:4}}>
                   <p style={{margin:0,fontSize:13,color:C.text,fontWeight:600,lineHeight:1.3}}>{item.title}</p>
-                  <p style={{margin:0,fontSize:10,color:C.muted}}>{CAT_LABEL[item.category]||item.category}</p>
+                  <p style={{margin:0,fontSize:12,color:C.muted}}>{CAT_LABEL[item.category]||item.category}</p>
                   {item.rating>0&&<Stars value={item.rating} size={10}/>}
                 </div>
                 <div style={{padding:"5px 11px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end",gap:3}}>
@@ -1858,11 +1858,11 @@ function UserDirectory({user,profiles,lang,onClose,onViewProfile,onOpenDM}){
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span style={{fontSize:14,color:C.text,fontWeight:600}}>{u2.username}</span>
                     {gr&&u2.global_role!=="user"&&<GlobalRoleBadge role={u2.global_role} size="small"/>}
-                    {banned&&<span style={{fontSize:9,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 6px",borderRadius:99,border:"1px solid rgba(248,113,113,0.3)"}}>🚫 Banni</span>}
+                    {banned&&<span style={{fontSize:11,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 6px",borderRadius:99,border:"1px solid rgba(248,113,113,0.3)"}}>🚫 Banni</span>}
                   </div>
                   <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center"}}>
                     <span style={{fontSize:11,color:badge.color}}>{badge.icon} {badge.label}</span>
-                    {prof.location&&<span style={{fontSize:10,color:C.muted}}>📍 {prof.location}</span>}
+                    {prof.location&&<span style={{fontSize:12,color:C.muted}}>📍 {prof.location}</span>}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:6}}>
@@ -1944,9 +1944,9 @@ function AdminPanel({user,lang,onClose,onViewProfile}){
                         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                           <span style={{fontSize:13,color:C.text,fontWeight:600}}>{u2.username}</span>
                           {gr&&u2.global_role!=="user"&&<GlobalRoleBadge role={u2.global_role} size="small"/>}
-                          {u2.is_banned&&<span style={{fontSize:9,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 5px",borderRadius:99}}>🚫 Banni</span>}
+                          {u2.is_banned&&<span style={{fontSize:11,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 5px",borderRadius:99}}>🚫 Banni</span>}
                         </div>
-                        <span style={{fontSize:10,color:C.muted}}>{u2.email} · Inscrit le {new Date(u2.created_at).toLocaleDateString("fr-FR")}</span>
+                        <span style={{fontSize:12,color:C.muted}}>{u2.email} · Inscrit le {new Date(u2.created_at).toLocaleDateString("fr-FR")}</span>
                       </div>
                       <span style={{fontSize:12,color:C.muted}}>›</span>
                     </div>
@@ -2047,7 +2047,7 @@ function ShareModal({list,lang,onClose}){
         <h2 style={{margin:"0 0 6px",fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text}}>« {list.name} »</h2>
         <p style={{margin:"0 0 20px",color:C.muted,fontSize:13}}>{t(lang,"share_desc")}</p>
         <div style={{background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:12,padding:"16px 24px",textAlign:"center",marginBottom:16}}>
-          <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>{t(lang,"invite_code")}</div>
+          <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>{t(lang,"invite_code")}</div>
           <div style={{fontSize:32,fontWeight:700,letterSpacing:10,color:C.gold,fontFamily:"monospace"}}>{list.invite_code}</div>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -2262,7 +2262,7 @@ export default function App(){
           {/* User row */}
           <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",background:"rgba(255,255,255,0.03)",borderRadius:8,marginBottom:6}}>
             <Avatar username={user.username} avatarUrl={myProfile.avatar_url} index={0} size={24} createdAt={myProfile.created_at} onClick={()=>setSettingsOpen(true)}/>
-            <span onClick={()=>setSettingsOpen(true)} style={{fontSize:12,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",cursor:"pointer"}}>{user.username}</span>
+            <span onClick={()=>setSettingsOpen(true)} style={{fontSize:13,fontWeight:500,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",cursor:"pointer"}}>{user.username}</span>
             {/* Notifications bell */}
             <div style={{position:"relative"}}>
               <button onClick={()=>{setNotifsOpen(true);setUnreadCount(0);}} title="Notifications" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px",color:unreadCount>0?C.gold:C.muted}}>🔔</button>
@@ -2287,27 +2287,27 @@ export default function App(){
 
         {/* Lists */}
         <div style={{flex:1}}>
-          <p style={{margin:"0 0 6px 2px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"my_lists")}</p>
-          {lists.length===0&&<p style={{fontSize:12,color:"rgba(255,255,255,0.12)",margin:"4px 0 0 2px"}}>—</p>}
+          <p style={{margin:"0 0 6px 2px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"my_lists")}</p>
+          {lists.length===0&&<p style={{fontSize:13,color:"rgba(255,255,255,0.3)",margin:"4px 0 0 2px"}}>—</p>}
           {lists.map(l=>(
-            <div key={l.id} onClick={()=>{setCurrentId(l.id);setPage("list");setChatOpen(false);}} style={{padding:"7px 9px",borderRadius:8,cursor:"pointer",fontSize:13,color:currentId===l.id&&page==="list"?C.gold:C.text,background:currentId===l.id&&page==="list"?"rgba(201,168,76,0.08)":"transparent",marginBottom:2,display:"flex",alignItems:"center",gap:7}}>
+            <div key={l.id} onClick={()=>{setCurrentId(l.id);setPage("list");setChatOpen(false);}} style={{padding:"7px 9px",borderRadius:8,cursor:"pointer",fontSize:14,color:currentId===l.id&&page==="list"?C.gold:C.text,background:currentId===l.id&&page==="list"?"rgba(201,168,76,0.08)":"transparent",marginBottom:2,display:"flex",alignItems:"center",gap:7}}>
               <span>{l.members?.length>1?"👥":"📋"}</span>
               <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</span>
-              <span style={{fontSize:10,color:C.muted,background:"rgba(255,255,255,0.05)",borderRadius:99,padding:"0 5px"}}>{l.members?.length||1}</span>
+              <span style={{fontSize:12,color:C.muted,background:"rgba(255,255,255,0.05)",borderRadius:99,padding:"0 5px"}}>{l.members?.length||1}</span>
             </div>
           ))}
         </div>
 
         {/* Create */}
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
-          <p style={{margin:"0 0 6px 2px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"create_list")}</p>
+          <p style={{margin:"0 0 6px 2px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"create_list")}</p>
           <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createListAction()} placeholder={t(lang,"list_name")} style={{...IS,fontSize:12,marginBottom:6}}/>
           <button onClick={createListAction} style={{...BP,width:"100%",fontSize:12,padding:"7px"}}>{t(lang,"create")}</button>
         </div>
 
         {/* Join */}
         <div>
-          <p style={{margin:"0 0 6px 2px",fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"join")}</p>
+          <p style={{margin:"0 0 6px 2px",fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:1.2}}>{t(lang,"join")}</p>
           <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&joinListAction()} placeholder={t(lang,"join_code")} style={{...IS,fontSize:14,marginBottom:6,fontFamily:"monospace",letterSpacing:5,textTransform:"uppercase",textAlign:"center"}} maxLength={6}/>
           <button onClick={joinListAction} style={{...BS,width:"100%",fontSize:12,padding:"7px"}}>{t(lang,"join")}</button>
           {sideMsg&&<p style={{fontSize:11,color:sideMsg.startsWith("✓")?C.success:C.danger,textAlign:"center",margin:"5px 0 0"}}>{sideMsg}</p>}
@@ -2342,20 +2342,20 @@ export default function App(){
             {/* Header */}
             <div style={{borderBottom:`1px solid ${C.border}`,padding:isMob?"10px 14px":"14px 22px",display:"flex",alignItems:"center",gap:isMob?8:12,flexWrap:"wrap",flexShrink:0}}>
               <div style={{flex:1}}>
-                <h2 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif"}}>{currentList.name}</h2>
+                <h2 style={{margin:0,fontSize:19,fontFamily:"'Playfair Display',serif",fontWeight:700}}>{currentList.name}</h2>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                   {members.map((m,i)=>(
                     <Avatar key={m.id} username={m.username} avatarUrl={profiles[m.id]?.avatar_url} index={i} size={18} onClick={()=>setViewProfileId(m.id)}/>
                   ))}
-                  <span style={{fontSize:11,color:C.muted}}>{members.length} {members.length>1?t(lang,"members"):t(lang,"member")} · {items.length} {items.length>1?t(lang,"titles"):t(lang,"title")}</span>
+                  <span style={{fontSize:13,color:C.text,opacity:0.75,fontWeight:500}}>{members.length} {members.length>1?t(lang,"members"):t(lang,"member")} · {items.length} {items.length>1?t(lang,"titles"):t(lang,"title")}</span>
                 </div>
               </div>
               {/* Stats */}
               <div style={{display:"flex",gap:8}}>
                 {[{k:"a_voir",l:t(lang,"to_watch")},{k:"en_cours",l:t(lang,"watching")},{k:"termine",l:t(lang,"watched")}].map(s=>(
                   <div key={s.k} style={{textAlign:"center",padding:"4px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8}}>
-                    <div style={{fontSize:17,fontWeight:600,color:STATUS[s.k].color,lineHeight:1.2}}>{counts[s.k]}</div>
-                    <div style={{fontSize:9,color:C.muted,textTransform:"uppercase",letterSpacing:0.5,marginTop:2}}>{s.l}</div>
+                    <div style={{fontSize:20,fontWeight:800,color:STATUS[s.k].color,lineHeight:1.2}}>{counts[s.k]}</div>
+                    <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:0.5,marginTop:2}}>{s.l}</div>
                   </div>
                 ))}
               </div>
@@ -2414,7 +2414,7 @@ export default function App(){
           ].map(item=>(
             <button key={item.label} onClick={item.action} style={{flex:1,background:"transparent",border:"none",cursor:"pointer",padding:"10px 4px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",fontFamily:"inherit"}}>
               <span style={{fontSize:20}}>{item.icon}</span>
-              <span style={{fontSize:9,color:item.active?C.gold:C.muted}}>{item.label}</span>
+              <span style={{fontSize:11,color:item.active?C.gold:C.muted}}>{item.label}</span>
               {item.badge>0&&<NotifBadge count={item.badge}/>}
             </button>
           ))}
