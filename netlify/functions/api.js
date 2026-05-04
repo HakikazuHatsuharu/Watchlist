@@ -116,30 +116,55 @@ async function updateProfile(user, body) {
 }
 
 async function searchUsers(user, query) {
-  if (!query?.trim() || query.trim().length < 2) return ok([]);
-  const { data: authUsers } = await db.auth.admin.listUsers();
+  const { data: authUsers } = await db.auth.admin.listUsers({ perPage: 1000 });
+  const q = query?.trim().toLowerCase() || "";
   const matches = (authUsers?.users || [])
-    .filter(u => u.id !== user.id && u.user_metadata?.username?.toLowerCase().includes(query.toLowerCase()))
-    .slice(0, 10)
-    .map(u => ({ id: u.id, username: u.user_metadata?.username }));
-  // Get their profiles
+    .filter(u => u.id !== user.id && (
+      !q || u.user_metadata?.username?.toLowerCase().includes(q)
+    ))
+    .slice(0, 30)
+    .map(u => ({ id: u.id, username: u.user_metadata?.username || u.email }));
+
+  if (!matches.length) return ok([]);
   const ids = matches.map(m => m.id);
-  const { data: profiles } = ids.length ? await db.from("profiles").select("*").in("id", ids) : { data: [] };
-  const result = matches.map(m => ({ ...m, ...(profiles?.find(p => p.id === m.id) || {}) }));
+  const { data: profiles } = await db.from("profiles").select("*").in("id", ids);
+  const result = matches.map(m => ({
+    ...m,
+    ...(profiles?.find(p => p.id === m.id) || {}),
+  }));
   return ok(result);
 }
 
 // ─── Friends ──────────────────────────────────────────────────────────────────
 async function getFriends(user) {
-  const { data } = await db.from("friendships").select("*").or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-  if (!data) return ok([]);
-  // Enrich with profile data
-  const otherIds = data.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id);
-  const { data: profiles } = otherIds.length ? await db.from("profiles").select("*").in("id", otherIds) : { data: [] };
+  const { data } = await db.from("friendships").select("*")
+    .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+  if (!data || data.length === 0) return ok([]);
+
+  const otherIds = [...new Set(data.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id))];
+  
+  // Get profiles
+  const { data: profiles } = otherIds.length
+    ? await db.from("profiles").select("*").in("id", otherIds)
+    : { data: [] };
+
+  // Fallback: get usernames from auth if profile missing
+  const { data: authUsers } = await db.auth.admin.listUsers();
+  
   const enriched = data.map(f => {
     const otherId = f.requester_id === user.id ? f.addressee_id : f.requester_id;
-    const profile = profiles?.find(p => p.id === otherId) || {};
-    return { ...f, other: { id: otherId, username: profile.username || "?", avatar_url: profile.avatar_url || "", created_at: profile.created_at } };
+    const profile = profiles?.find(p => p.id === otherId);
+    const authUser = authUsers?.users?.find(u => u.id === otherId);
+    const username = profile?.username || authUser?.user_metadata?.username || "?";
+    return {
+      ...f,
+      other: {
+        id: otherId,
+        username,
+        avatar_url: profile?.avatar_url || "",
+        created_at: profile?.created_at || authUser?.created_at,
+      }
+    };
   });
   return ok(enriched);
 }
@@ -248,6 +273,65 @@ async function removeMember(user, listId, memberId) {
   return ok({ done: true });
 }
 
+// DELETE /api/lists/:id — delete entire list (owner only)
+async function deleteList(user, listId) {
+  const { data: list } = await db.from("watchlists").select("*").eq("id", listId).single();
+  if (!list) return notFound();
+  const me = list.members?.find(m => m.id === user.id);
+  if (me?.role !== "owner") return err("Only the owner can delete this list", 403);
+
+  // Notify all members
+  for (const member of (list.members || [])) {
+    if (member.id === user.id) continue;
+    await createNotif(db, {
+      userId: member.id, type: "news",
+      fromId: user.id, fromName: user.username,
+      content: `La liste "${list.name}" a été supprimée par ${user.username}`,
+      link: "/",
+    });
+  }
+
+  // Delete items + messages + the list
+  await db.from("items").delete().eq("watchlist_id", listId);
+  await db.from("messages").delete().eq("watchlist_id", listId);
+  await db.from("watchlists").delete().eq("id", listId);
+  return ok({ deleted: true });
+}
+
+// DELETE /api/account — delete own account and all associated data
+async function deleteAccount(user) {
+  // Remove from all watchlists
+  const { data: lists } = await db.from("watchlists").select("*");
+  for (const list of (lists || [])) {
+    if (list.owner_id === user.id) {
+      // Notify members
+      for (const m of (list.members || [])) {
+        if (m.id === user.id) continue;
+        await createNotif(db, {
+          userId: m.id, type: "news", fromId: user.id, fromName: user.username,
+          content: `La liste "${list.name}" a été supprimée car son créateur a supprimé son compte.`,
+          link: "/",
+        });
+      }
+      await db.from("items").delete().eq("watchlist_id", list.id);
+      await db.from("messages").delete().eq("watchlist_id", list.id);
+      await db.from("watchlists").delete().eq("id", list.id);
+    } else if (list.members?.some(m => m.id === user.id)) {
+      const newMembers = list.members.filter(m => m.id !== user.id);
+      await db.from("watchlists").update({ members: newMembers }).eq("id", list.id);
+    }
+  }
+  // Delete personal data
+  await db.from("watchlog").delete().eq("user_id", user.id);
+  await db.from("friendships").delete().or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+  await db.from("direct_messages").delete().or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+  await db.from("notifications").delete().eq("user_id", user.id);
+  await db.from("profiles").delete().eq("id", user.id);
+  // Delete auth user
+  await db.auth.admin.deleteUser(user.id);
+  return ok({ deleted: true });
+}
+
 // ─── Items ────────────────────────────────────────────────────────────────────
 async function getItems(user, listId) {
   const { data: list } = await db.from("watchlists").select("members").eq("id", listId).single();
@@ -281,6 +365,7 @@ async function updateItem(user, listId, itemId, body) {
     if (body.category) updates.category = body.category;
     if (body.tags !== undefined) updates.tags = body.tags;
     if (body.poster_url !== undefined) updates.poster_url = body.poster_url;
+    if (body.runtime !== undefined) updates.runtime = body.runtime;
   }
   await db.from("items").update(updates).eq("id", itemId);
   return ok({ ...existing, ...updates });
@@ -495,6 +580,45 @@ async function getModerationLog(actor) {
   return ok(data || []);
 }
 
+// GET /api/admin/users — list all users with stats (superadmin/admin only)
+async function getAllUsers(actor) {
+  const actorRole = await getGlobalRole(actor.id);
+  if (!canAdmin(actorRole)) return err("Insufficient permissions", 403);
+
+  const { data: authData } = await db.auth.admin.listUsers({ perPage: 1000 });
+  const { data: profiles } = await db.from("profiles").select("*");
+
+  const users = (authData?.users || []).map(u => {
+    const profile = profiles?.find(p => p.id === u.id) || {};
+    return {
+      id: u.id,
+      username: u.user_metadata?.username || u.email,
+      email: u.email,
+      created_at: u.created_at,
+      last_sign_in: u.last_sign_in_at,
+      global_role: profile.global_role || "user",
+      is_banned: profile.is_banned || false,
+      avatar_url: profile.avatar_url || "",
+    };
+  });
+
+  return ok({ total: users.length, users });
+}
+
+// GET /api/admin/stats — global app stats
+async function getAppStats(actor) {
+  const actorRole = await getGlobalRole(actor.id);
+  if (!canAdmin(actorRole)) return err("Insufficient permissions", 403);
+
+  const { count: userCount } = await db.from("profiles").select("id", { count: "exact", head: true });
+  const { count: listCount } = await db.from("watchlists").select("id", { count: "exact", head: true });
+  const { count: itemCount } = await db.from("items").select("id", { count: "exact", head: true });
+  const { count: msgCount } = await db.from("messages").select("id", { count: "exact", head: true });
+  const { count: watchlogCount } = await db.from("watchlog").select("id", { count: "exact", head: true });
+
+  return ok({ userCount, listCount, itemCount, msgCount, watchlogCount });
+}
+
 async function deleteMessage(actor, msgId) {
   const actorRole = await getGlobalRole(actor.id);
   if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
@@ -544,6 +668,12 @@ export const handler = async (event) => {
       if (method === "DELETE" && segments[1] === "message" && segments[2]) return await deleteMessage(user, segments[2]);
     }
 
+    // Admin
+    if (segments[0] === "admin") {
+      if (method === "GET" && segments[1] === "users")  return await getAllUsers(user);
+      if (method === "GET" && segments[1] === "stats")  return await getAppStats(user);
+    }
+
     // Friends
     if (segments[0] === "friends") {
       if (method === "GET"  && segments.length === 1)            return await getFriends(user);
@@ -576,7 +706,8 @@ export const handler = async (event) => {
 
       const listId = segments[1]; if (!listId) return notFound();
 
-      if (method === "PUT"  && segments.length === 2) return await renameList(user, listId, body);
+      if (method === "PUT"    && segments.length === 2) return await renameList(user, listId, body);
+      if (method === "DELETE" && segments.length === 2) return await deleteList(user, listId);
 
       // Members
       if (segments[2] === "members") {
@@ -600,6 +731,9 @@ export const handler = async (event) => {
         if (method === "POST") return await sendMessage(user, listId, body);
       }
     }
+
+    // Account
+    if (method === "DELETE" && segments[0] === "account") return await deleteAccount(user);
 
     // Notifications
     if (segments[0] === "notifications") {

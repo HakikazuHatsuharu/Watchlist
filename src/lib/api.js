@@ -115,3 +115,16 @@ export const likeNews    = (id) => post(`/news/${id}/like`);
 
 // ─── Home feed (trending + perso) ────────────────────────────────────────────
 export const getHomeFeed = () => get("/home");
+
+// ─── List deletion ─────────────────────────────────────────────────────────────
+export const deleteList   = (listId) => del(`/lists/${listId}`);
+
+// ─── Account ──────────────────────────────────────────────────────────────────
+export const deleteAccount = () => del("/account");
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+export const getAdminUsers = () => get("/admin/users");
+export const getAdminStats = () => get("/admin/stats");
+
+// ─── Users directory ─────────────────────────────────────────────────────────
+export const getAllUsers = (q) => get("/profiles/search", { q: q||"" });

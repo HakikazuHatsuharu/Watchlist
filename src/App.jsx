@@ -8,6 +8,16 @@ import {
   subscribeToNotifications
 } from "./lib/realtime";
 
+// ─── Responsive hook ─────────────────────────────────────────────────────────
+function useIsMobile(){ 
+  const [m,setM]=useState(()=>window.innerWidth<768);
+  useEffect(()=>{
+    const h=()=>setM(window.innerWidth<768);
+    window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);
+  },[]);
+  return m;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const C = {
   bg:"#0b0b18",surface:"#111128",card:"#181830",border:"rgba(255,255,255,0.07)",
@@ -623,14 +633,30 @@ function ItemCard({item,user,members,profiles,onEdit,onDelete,lang,confirmDelete
               {item.tags.length>3&&<span style={{fontSize:9,color:C.muted}}>+{item.tags.length-3}</span>}
             </div>
           )}
-          {/* My progress only */}
+          {/* My progress - Spotify style */}
           <div style={{marginTop:"auto",paddingTop:7,borderTop:`1px solid ${C.border}`}}>
-            <div style={{fontSize:11,color:meta.color}}>
-              {meta.label}
-              {myProg.status==="en_cours"&&item.category==="film"&&myProg.minutes?` · ${myProg.minutes}min`:""}
-              {myProg.status==="en_cours"&&item.category!=="film"&&(myProg.season||myProg.episode)?` · S${myProg.season||"?"}E${myProg.episode||"?"}`:""}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:myProg.status==="en_cours"?4:0}}>
+              <span style={{fontSize:11,color:meta.color,fontWeight:600}}>{meta.label}</span>
+              {myProg.status==="en_cours"&&item.category==="film"&&myProg.minutes&&(
+                <span style={{fontSize:10,color:C.muted}}>{myProg.minutes} min</span>
+              )}
+              {myProg.status==="en_cours"&&item.category!=="film"&&(myProg.season||myProg.episode)&&(
+                <span style={{fontSize:10,color:C.muted}}>S{myProg.season||"?"}·E{myProg.episode||"?"}</span>
+              )}
             </div>
-            {myProg.rating>0&&<div style={{marginTop:3}}><Stars value={myProg.rating} size={10}/></div>}
+            {/* Progress bar for films */}
+            {myProg.status==="en_cours"&&(item.category==="film"||item.category==="short"||item.category==="documentary")&&myProg.minutes>0&&(
+              <div style={{height:3,background:`${C.border}`,borderRadius:99,overflow:"hidden",marginBottom:3}}>
+                <div style={{height:"100%",background:C.gold,borderRadius:99,width:`${Math.min(100,Math.round((parseInt(myProg.minutes)||0)/Math.max(1,item.runtime||90)*100))}%`,transition:"width 0.3s"}}/>
+              </div>
+            )}
+            {/* Progress bar for series */}
+            {myProg.status==="en_cours"&&item.category!=="film"&&item.category!=="short"&&(myProg.season||myProg.episode)&&(
+              <div style={{height:3,background:`${C.border}`,borderRadius:99,overflow:"hidden",marginBottom:3}}>
+                <div style={{height:"100%",background:C.gold,borderRadius:99,width:`${Math.min(100,(parseInt(myProg.episode||0)%12)/12*100)}%`,transition:"width 0.3s"}}/>
+              </div>
+            )}
+            {myProg.status==="termine"&&myProg.rating>0&&<Stars value={myProg.rating} size={10}/>}
           </div>
         </div>
         {/* Footer */}
@@ -665,8 +691,9 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
     setSaving(true);
     try{
       let saved;
-      if(item?.id) saved=await api.updateItem(listId,item.id,{user_progress:{[user.id]:{...myProg}},...(canEditMeta?{title:form.title,category:form.category,tags:form.tags,poster_url:form.poster_url}:{})});
-      else saved=await api.createItem(listId,form);
+      const payload={user_progress:{[user.id]:{...myProg}},...(canEditMeta?{title:form.title,category:form.category,tags:form.tags,poster_url:form.poster_url,runtime:form.runtime||null}:{})};
+      if(item?.id) saved=await api.updateItem(listId,item.id,payload);
+      else saved=await api.createItem(listId,{...form,runtime:form.runtime||null});
       onSaved(saved);
     }catch(e){alert(e.message);}
     setSaving(false);
@@ -887,7 +914,7 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:500,overflowY:"auto",padding:"32px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:18,width:"100%",maxWidth:540}}>
         {/* Header banner — pas de overflow:hidden pour que l'avatar déborde */}
-        <div style={{background:`linear-gradient(135deg,${C.bg} 0%,#1a1040 100%)`,paddingBottom:24,position:"relative",flexShrink:0}}>
+        <div style={{background:`linear-gradient(135deg,${C.bg} 0%,${C.surface} 100%)`,paddingBottom:24,position:"relative",flexShrink:0}}>
           <div style={{height:70,position:"relative"}}>
             <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(ellipse at 30% 50%,${gr.bg||"transparent"} 0%,transparent 70%)`}}/>
             <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.4)",border:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:16,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
@@ -1046,7 +1073,7 @@ function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
                   <Avatar username={u2.username} avatarUrl={u2.avatar_url} index={0} size={28} onClick={()=>onViewProfile&&onViewProfile(u2.id)}/>
                   <span style={{flex:1,fontSize:13,color:C.text,cursor:"pointer"}} onClick={()=>onViewProfile&&onViewProfile(u2.id)}>{u2.username}</span>
                   {!already&&<button onClick={()=>sendReq(u2.id)} style={{...BS,fontSize:11,padding:"4px 10px"}}>+ Ajouter</button>}
-                  {already&&<span style={{fontSize:11,color:C.muted}}>Déjà ami</span>}
+                  {already&&<span style={{fontSize:11,color:C.muted}}>{friends.some(f=>f.status==="accepted"&&(f.requester_id===u2.id||f.addressee_id===u2.id))?"Déjà ami":"Demande envoyée"}</span>}
                 </div>
               );
             })}
@@ -1280,6 +1307,17 @@ function SettingsPanel({user,lang,setLang,theme,setTheme,onClose,onUpdated}){
           </div>
           {msg&&<p style={{fontSize:12,color:msg.includes("!")?C.success:C.danger,margin:0,textAlign:"center"}}>{msg}</p>}
           <button onClick={save} disabled={saving} style={{...BP,width:"100%",opacity:saving?0.7:1}}>{saving?"…":"Sauvegarder"}</button>
+
+          {/* Account deletion */}
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginTop:4}}>
+            <p style={{margin:"0 0 8px",fontSize:11,color:C.muted}}>Zone dangereuse</p>
+            <button onClick={async()=>{
+              if(!window.confirm("Supprimer définitivement ton compte ? Cette action est irréversible et effacera toutes tes données.")) return;
+              if(!window.confirm("Tu es vraiment sûr·e ? Toutes tes listes dont tu es créateur seront aussi supprimées.")) return;
+              try{await api.deleteAccount();api.clearSession();window.location.reload();}
+              catch(e){setMsg("❌ "+e.message);}
+            }} style={{...BD,width:"100%",fontSize:12}}>🗑 Supprimer mon compte</button>
+          </div>
         </div>
       </div>
       {cropSrc&&<ImageCropModal src={cropSrc} onConfirm={url=>{setProfile(p=>({...p,avatar_url:url}));setCropSrc(null);}} onClose={()=>setCropSrc(null)}/>}
@@ -1288,12 +1326,21 @@ function SettingsPanel({user,lang,setLang,theme,setTheme,onClose,onUpdated}){
 }
 
 // ─── List Settings Modal ──────────────────────────────────────────────────────
-function ListSettingsModal({list,user,lang,onClose,onUpdated}){
+function ListSettingsModal({list,user,lang,profiles,onClose,onUpdated,onDeleted}){
   const [name,setName]=useState(list.name);
   const [saving,setSaving]=useState(false);
   const [copied,setCopied]=useState(false);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [deleting,setDeleting]=useState(false);
   const me=list.members?.find(m=>m.id===user.id);
   const canManage=me?.role==="owner"||me?.role==="admin";
+
+  const ROLE_META={
+    owner: {label:"👑 Owner",  color:"#C9A84C"},
+    admin: {label:"⚡ Admin",  color:"#F87171"},
+    moderator:{label:"🛡 Modo",color:"#60A5FA"},
+    member:{label:"Membre",    color:C.muted},
+  };
 
   const save=async()=>{
     if(!name.trim()||name===list.name) return;
@@ -1314,50 +1361,70 @@ function ListSettingsModal({list,user,lang,onClose,onUpdated}){
     catch(e){alert(e.message);}
   };
 
+  const handleDeleteList=async()=>{
+    setDeleting(true);
+    try{await api.deleteList(list.id);onDeleted();}
+    catch(e){alert(e.message);}
+    setDeleting(false);
+  };
+
   const copy=()=>navigator.clipboard.writeText(list.invite_code).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
 
+  // Sort members: owner first, then by role level
+  const roleOrder={owner:0,admin:1,moderator:2,member:3};
+  const sortedMembers=[...(list.members||[])].sort((a,b)=>(roleOrder[a.role]||3)-(roleOrder[b.role]||3));
+
   return(
+    <>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:250,padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:26,width:"100%",maxWidth:440,maxHeight:"85vh",overflowY:"auto"}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:26,width:"100%",maxWidth:460,maxHeight:"88vh",overflowY:"auto",boxSizing:"border-box"}}>
         <div style={{display:"flex",alignItems:"center",marginBottom:20}}>
-          <h2 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text,flex:1}}>⚙️ Paramètres de la liste</h2>
+          <h2 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text,flex:1}}>⚙️ {list.name}</h2>
           <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>×</button>
         </div>
-        {canManage&&<div style={{marginBottom:20}}>
+
+        {/* Rename */}
+        {canManage&&<div style={{marginBottom:18}}>
           <label style={LB}>Nom de la liste</label>
           <div style={{display:"flex",gap:8}}>
-            <input value={name} onChange={e=>setName(e.target.value)} style={{...IS,flex:1}}/>
-            <button onClick={save} disabled={saving||name===list.name} style={{...BP,padding:"8px 14px",opacity:saving||name===list.name?0.5:1}}>Renommer</button>
+            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&save()} style={{...IS,flex:1}}/>
+            <button onClick={save} disabled={saving||name===list.name} style={{...BP,padding:"8px 14px",opacity:saving||name===list.name?0.5:1}}>OK</button>
           </div>
         </div>}
-        <div style={{marginBottom:20}}>
+
+        {/* Invite code */}
+        <div style={{marginBottom:18}}>
           <label style={LB}>Code d'invitation</label>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div style={{flex:1,background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:8,padding:"8px 14px",fontSize:20,fontWeight:700,letterSpacing:8,color:C.gold,fontFamily:"monospace"}}>{list.invite_code}</div>
+            <div style={{flex:1,background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:8,padding:"8px 14px",fontSize:18,fontWeight:700,letterSpacing:8,color:C.gold,fontFamily:"monospace",textAlign:"center"}}>{list.invite_code}</div>
             <button onClick={copy} style={{...BS,padding:"8px 12px"}}>{copied?"✓":"📋"}</button>
           </div>
         </div>
-        <div>
-          <label style={LB}>Membres ({list.members?.length||0})</label>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {(list.members||[]).map((m,i)=>{
+
+        {/* Members */}
+        <div style={{marginBottom:me?.role==="owner"?18:0}}>
+          <label style={LB}>Membres ({sortedMembers.length})</label>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {sortedMembers.map((m,i)=>{
               const isMe=m.id===user.id;
-              const ROLE_COLORS={owner:C.gold,admin:C.danger,moderator:C.blue,member:C.muted};
+              const rm=ROLE_META[m.role]||ROLE_META.member;
+              const prof=profiles?.[m.id]||{};
+              const memberStatus=getStatus(lang);
               return(
-                <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8}}>
-                  <Avatar username={m.username} index={i} size={28}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,color:C.text}}>{m.username}{isMe&&" (toi)"}</div>
-                    <span style={{fontSize:10,color:ROLE_COLORS[m.role]||C.muted,background:`${ROLE_COLORS[m.role]||C.muted}18`,padding:"1px 6px",borderRadius:99}}>{m.role}</span>
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:`1px solid ${m.role==="owner"?"rgba(201,168,76,0.2)":C.border}`}}>
+                  <Avatar username={m.username} avatarUrl={prof.avatar_url} index={i} size={34} createdAt={prof.created_at}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,color:C.text,fontWeight:isMe?600:400}}>{m.username}{isMe&&<span style={{fontSize:10,color:C.muted}}> (toi)</span>}</div>
+                    {m.role!=="member"&&<span style={{fontSize:10,color:rm.color,background:`${rm.color}18`,padding:"1px 7px",borderRadius:99,border:`1px solid ${rm.color}30`}}>{rm.label}</span>}
                   </div>
                   {canManage&&!isMe&&m.role!=="owner"&&(
-                    <div style={{display:"flex",gap:4}}>
-                      <select value={m.role} onChange={e=>changeRole(m.id,e.target.value)} style={{...IS,width:"auto",fontSize:11,padding:"3px 6px"}}>
-                        <option value="admin">Admin</option>
-                        <option value="moderator">Modo</option>
-                        <option value="member">Membre</option>
+                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <select value={m.role} onChange={e=>changeRole(m.id,e.target.value)} style={{...IS,width:"auto",fontSize:11,padding:"3px 6px",background:C.card}}>
+                        <option value="admin">⚡ Admin</option>
+                        <option value="moderator">🛡 Modo</option>
+                        <option value="member">👤 Membre</option>
                       </select>
-                      {me?.role==="owner"&&<button onClick={()=>kick(m.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:14,padding:"2px 4px"}}>✕</button>}
+                      {me?.role==="owner"&&<button onClick={()=>kick(m.id)} title="Exclure" style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:15,padding:"2px 4px",lineHeight:1}}>✕</button>}
                     </div>
                   )}
                 </div>
@@ -1365,13 +1432,38 @@ function ListSettingsModal({list,user,lang,onClose,onUpdated}){
             })}
           </div>
         </div>
+
+        {/* Delete list (owner only) */}
+        {me?.role==="owner"&&(
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,marginTop:4}}>
+            <p style={{margin:"0 0 10px",fontSize:11,color:C.muted}}>Zone dangereuse — tous les membres seront notifiés.</p>
+            <button onClick={()=>setConfirmDel(true)} style={{...BD,width:"100%",fontSize:13}}>🗑 Supprimer cette liste</button>
+          </div>
+        )}
       </div>
     </div>
+
+    {/* Confirm delete list */}
+    {confirmDel&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,padding:16}}>
+        <div style={{background:C.surface,border:"1px solid rgba(248,113,113,0.4)",borderRadius:16,padding:28,maxWidth:360,width:"100%",textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:12}}>⚠️</div>
+          <h3 style={{margin:"0 0 8px",color:C.text}}>Supprimer "{list.name}" ?</h3>
+          <p style={{margin:"0 0 6px",fontSize:13,color:C.muted}}>Cette action est <strong>irréversible</strong>.</p>
+          <p style={{margin:"0 0 22px",fontSize:13,color:C.muted}}>Tous les membres ({list.members?.length||0}) seront notifiés.</p>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={()=>setConfirmDel(false)} style={BS} disabled={deleting}>Annuler</button>
+            <button onClick={handleDeleteList} style={BD} disabled={deleting}>{deleting?"…":"🗑 Supprimer définitivement"}</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
 // ─── Home Page ────────────────────────────────────────────────────────────────
-function HomePage({user,profiles,lang,onOpenList,onViewProfile,onSearch,onOpenSettings,onOpenFriends,onOpenWatchlog,unreadCount}){
+function HomePage({user,profiles,lang,isMob,onOpenList,onViewProfile,onSearch,onOpenSettings,onOpenFriends,onOpenWatchlog,unreadCount}){
   const [feed,setFeed]=useState(null);
   const [loading,setLoading]=useState(true);
   const [trending,setTrending]=useState([]);
@@ -1414,25 +1506,56 @@ function HomePage({user,profiles,lang,onOpenList,onViewProfile,onSearch,onOpenSe
         </div>
       </div>
 
-      <div style={{padding:"0 28px"}}>
-        {/* Friend activity */}
+      <div style={{padding:isMob?"0 12px":"0 28px",paddingBottom:isMob?80:0}}>
+        {/* Trending FIRST */}
+        {trending.length>0&&(
+          <div style={{marginBottom:28}}>
+            <h3 style={{margin:"0 0 14px",fontSize:14,color:C.text,fontFamily:"'Playfair Display',serif"}}>🔥 Tendances</h3>
+            <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${isMob?"110px":"130px"},1fr))`,gap:isMob?8:12}}>
+              {trending.slice(0,12).map((item,i)=>(
+                <div key={i} style={{background:C.card,borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,cursor:"pointer",transition:"transform 0.15s,border-color 0.15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor=`${C.gold}50`;}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.borderColor=C.border;}}
+                  onClick={()=>setAddToListModal(item)}>
+                  <div style={{height:180,position:"relative",background:"rgba(255,255,255,0.03)"}}>
+                    {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                      :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,opacity:0.1}}>🎬</div>}
+                    <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,${C.bg}cc 0%,transparent 50%)`}}/>
+                    {item.rating>0&&<div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.6)",borderRadius:99,padding:"2px 7px",fontSize:10,color:C.warning}}>⭐ {item.rating}</div>}
+                  </div>
+                  <div style={{padding:"8px 10px"}}>
+                    <p style={{margin:0,fontSize:12,color:C.text,fontWeight:600,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
+                    <p style={{margin:"3px 0 0",fontSize:10,color:C.muted}}>{CAT_LABEL[item.category]||item.category} {item.year&&`· ${item.year}`}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Friend activity SECOND */}
         {feed?.friendActivity?.length>0&&(
           <div style={{marginBottom:28}}>
             <h3 style={{margin:"0 0 14px",fontSize:14,color:C.text,fontFamily:"'Playfair Display',serif"}}>🟢 Activité de tes amis</h3>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {feed.friendActivity.slice(0,5).map((a,i)=>{
+              {feed.friendActivity.slice(0,8).map((a,i)=>{
                 const st=getStatus(lang)[a.status]||getStatus(lang).a_voir;
                 return(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:C.card,borderRadius:10,border:`1px solid ${C.border}`}}>
-                    <Avatar username={a.username} avatarUrl={a.avatar_url} index={i} size={32} onClick={()=>onViewProfile(a.user_id)}/>
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:C.card,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer"}}
+                    onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.gold}40`}
+                    onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                    <Avatar username={a.username} avatarUrl={a.avatar_url} index={i} size={34} onClick={()=>onViewProfile(a.user_id)}/>
                     <div style={{flex:1}}>
                       <span style={{fontSize:13,color:C.text,fontWeight:600,cursor:"pointer"}} onClick={()=>onViewProfile(a.user_id)}>{a.username}</span>
                       <span style={{fontSize:13,color:C.muted}}> a mis </span>
                       <span style={{fontSize:13,color:C.text,fontWeight:600}}>{a.title}</span>
                       <span style={{fontSize:13,color:C.muted}}> en </span>
-                      <span style={{fontSize:13,color:st.color}}>{st.label}</span>
+                      <span style={{fontSize:13,color:st.color,fontWeight:600}}>{st.label}</span>
                     </div>
-                    {a.poster_url&&<img src={a.poster_url} alt="" style={{width:32,height:46,objectFit:"cover",borderRadius:4}}/>}
+                    {a.poster_url&&(
+                      <img src={a.poster_url} alt="" style={{width:36,height:52,objectFit:"cover",borderRadius:5,cursor:"pointer",border:`1px solid ${C.border}`}}
+                        onClick={()=>setAddToListModal({title:a.title,poster_url:a.poster_url,category:a.category||"film"})}/>
+                    )}
                   </div>
                 );
               })}
@@ -1455,32 +1578,6 @@ function HomePage({user,profiles,lang,onOpenList,onViewProfile,onSearch,onOpenSe
                       <span style={{fontSize:10,color:C.muted}}>par {n.author_name}</span>
                       <span style={{fontSize:10,color:C.muted,marginLeft:"auto"}}>❤️ {n.likes}</span>
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Trending / Discover */}
-        {trending.length>0&&(
-          <div>
-            <h3 style={{margin:"0 0 14px",fontSize:14,color:C.text,fontFamily:"'Playfair Display',serif"}}>🔥 Tendances</h3>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:12}}>
-              {trending.slice(0,12).map((item,i)=>(
-                <div key={i} style={{background:C.card,borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,cursor:"pointer",transition:"transform 0.15s,border-color 0.15s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor="rgba(201,168,76,0.3)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.borderColor=C.border;}}
-                  onClick={()=>setAddToListModal(item)}>
-                  <div style={{height:180,position:"relative",background:"rgba(255,255,255,0.03)"}}>
-                    {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
-                      :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,opacity:0.1}}>🎬</div>}
-                    <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(11,11,24,0.7) 0%,transparent 50%)"}}/>
-                    {item.rating>0&&<div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.6)",borderRadius:99,padding:"2px 7px",fontSize:10,color:C.warning}}>⭐ {item.rating}</div>}
-                  </div>
-                  <div style={{padding:"8px 10px"}}>
-                    <p style={{margin:0,fontSize:12,color:C.text,fontWeight:600,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
-                    <p style={{margin:"3px 0 0",fontSize:10,color:C.muted}}>{CAT_LABEL[item.category]||item.category} {item.year&&`· ${item.year}`}</p>
                   </div>
                 </div>
               ))}
@@ -1512,16 +1609,17 @@ function QuickAddModal({item,user,lang,onClose}){
 
   useEffect(()=>{api.getLists().then(setLists);},[]);
 
+  const [dest,setDest]=useState("list"); // "list" | "log"
+
   const add=async()=>{
-    if(!selected) return;
     setAdding(true);
     try{
-      await api.createItem(selected,{
-        title:item.title,category:item.category||"film",
-        poster_url:item.poster_url||"",tags:[],
-        user_progress:{[user.id]:{status,minutes:"",season:"",episode:"",rating:0}},
-        tmdb_id:item.tmdb_id||null,
-      });
+      if(dest==="log"){
+        await api.addToWatchlog({title:item.title,category:item.category||"film",poster_url:item.poster_url||"",status,tags:[],rating:0,minutes:0,season:0,episode:0,tmdb_id:item.tmdb_id||null});
+      } else {
+        if(!selected){setAdding(false);return;}
+        await api.createItem(selected,{title:item.title,category:item.category||"film",poster_url:item.poster_url||"",tags:[],user_progress:{[user.id]:{status,minutes:"",season:"",episode:"",rating:0}},tmdb_id:item.tmdb_id||null});
+      }
       setDone(true);setTimeout(()=>onClose(),1200);
     }catch(e){alert(e.message);}
     setAdding(false);
@@ -1529,23 +1627,29 @@ function QuickAddModal({item,user,lang,onClose}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600,padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,width:"100%",maxWidth:360}}>
-        <div style={{display:"flex",gap:12,marginBottom:18}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,width:"100%",maxWidth:380}}>
+        <div style={{display:"flex",gap:12,marginBottom:16}}>
           {item.poster_url&&<img src={item.poster_url} alt="" style={{width:52,height:76,objectFit:"cover",borderRadius:6,flexShrink:0}}/>}
           <div>
             <h3 style={{margin:0,fontSize:16,color:C.text,fontFamily:"'Playfair Display',serif"}}>{item.title}</h3>
             <p style={{margin:"4px 0 0",fontSize:12,color:C.muted}}>{CAT_LABEL[item.category]||item.category} {item.year&&`· ${item.year}`}</p>
           </div>
         </div>
-        {done?<p style={{textAlign:"center",color:C.success,fontSize:15}}>✓ Ajouté !</p>:(
+        {done?<p style={{textAlign:"center",color:C.success,fontSize:15,padding:"10px 0"}}>✓ Ajouté !</p>:(
           <>
-            <div style={{marginBottom:12}}><label style={LB}>Ajouter à la liste</label>
+            {/* Destination tabs */}
+            <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:14}}>
+              {[{k:"list",l:"📋 Une liste"},{k:"log",l:"📖 Mon journal"}].map(d=>(
+                <button key={d.k} onClick={()=>setDest(d.k)} style={{flex:1,background:dest===d.k?`${C.gold}18`:"transparent",border:"none",borderBottom:dest===d.k?`2px solid ${C.gold}`:"2px solid transparent",padding:"9px 6px",fontSize:12,color:dest===d.k?C.gold:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{d.l}</button>
+              ))}
+            </div>
+            {dest==="list"&&<div style={{marginBottom:12}}><label style={LB}>Choisir une liste</label>
               <select value={selected} onChange={e=>setSelected(e.target.value)} style={IS}>
-                <option value="">— Choisir une liste —</option>
+                <option value="">— Sélectionne une liste —</option>
                 {lists.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
-            </div>
-            <div style={{marginBottom:18}}><label style={LB}>Statut</label>
+            </div>}
+            <div style={{marginBottom:16}}><label style={LB}>Statut</label>
               <select value={status} onChange={e=>setStatus(e.target.value)} style={IS}>
                 <option value="a_voir">{t(lang,"to_watch")}</option>
                 <option value="en_cours">{t(lang,"watching")}</option>
@@ -1554,7 +1658,7 @@ function QuickAddModal({item,user,lang,onClose}){
             </div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={onClose} style={BS}>{t(lang,"cancel")}</button>
-              <button onClick={add} disabled={adding||!selected} style={{...BP,flex:1,opacity:!selected||adding?0.5:1}}>{adding?"…":"+ Ajouter"}</button>
+              <button onClick={add} disabled={adding||(dest==="list"&&!selected)} style={{...BP,flex:1,opacity:(dest==="list"&&!selected)||adding?0.5:1}}>{adding?"…":"+ Ajouter"}</button>
             </div>
           </>
         )}
@@ -1696,6 +1800,167 @@ function WatchlogModal({item,lang,onSave,onClose}){
   );
 }
 
+// ─── User Directory (Steam-style) ─────────────────────────────────────────────
+function UserDirectory({user,profiles,lang,onClose,onViewProfile,onOpenDM}){
+  const [q,setQ]=useState("");
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [friends,setFriends]=useState([]);
+  const [msg,setMsg]=useState("");
+  const timer=useRef();
+
+  useEffect(()=>{
+    api.searchUsers("").then(setUsers).catch(()=>{}).finally(()=>setLoading(false));
+    api.getFriends().then(setFriends).catch(()=>{});
+  },[]);
+
+  useEffect(()=>{
+    clearTimeout(timer.current);
+    timer.current=setTimeout(()=>{
+      setLoading(true);
+      api.searchUsers(q).then(setUsers).catch(()=>{}).finally(()=>setLoading(false));
+    },300);
+  },[q]);
+
+  const isFriend=(id)=>friends.some(f=>(f.requester_id===id||f.addressee_id===id)&&f.status==="accepted");
+  const isPending=(id)=>friends.some(f=>(f.requester_id===id||f.addressee_id===id)&&f.status==="pending");
+
+  const addFriend=async(id)=>{
+    try{await api.sendFriendReq(id);setMsg("Demande envoyée !");setTimeout(()=>setMsg(""),2000);api.getFriends().then(setFriends);}
+    catch(e){setMsg("❌ "+e.message);setTimeout(()=>setMsg(""),2500);}
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:450,overflowY:"auto",padding:"24px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,width:"100%",maxWidth:560,overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
+          <h2 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text,flex:1}}>👥 Membres ({users.length})</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:22}}>×</button>
+        </div>
+        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un membre…" style={{...IS}} autoFocus/>
+          {msg&&<p style={{margin:"6px 0 0",fontSize:12,color:msg.startsWith("❌")?C.danger:C.success}}>{msg}</p>}
+        </div>
+        <div style={{maxHeight:"65vh",overflowY:"auto"}}>
+          {loading&&<p style={{textAlign:"center",color:C.muted,padding:30}}>…</p>}
+          {!loading&&users.length===0&&<p style={{textAlign:"center",color:C.muted,padding:30}}>Aucun membre trouvé.</p>}
+          {users.map((u2,i)=>{
+            const prof=profiles[u2.id]||u2;
+            const badge=getBadge(prof.created_at||Date.now());
+            const gr=GLOBAL_ROLES[u2.global_role];
+            const banned=u2.is_banned;
+            return(
+              <div key={u2.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${C.border}`,opacity:banned?0.5:1}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <Avatar username={u2.username||"?"} avatarUrl={prof.avatar_url||u2.avatar_url} index={i} size={40} createdAt={prof.created_at} onClick={()=>onViewProfile(u2.id)}/>
+                <div style={{flex:1,cursor:"pointer"}} onClick={()=>onViewProfile(u2.id)}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:14,color:C.text,fontWeight:600}}>{u2.username}</span>
+                    {gr&&u2.global_role!=="user"&&<GlobalRoleBadge role={u2.global_role} size="small"/>}
+                    {banned&&<span style={{fontSize:9,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 6px",borderRadius:99,border:"1px solid rgba(248,113,113,0.3)"}}>🚫 Banni</span>}
+                  </div>
+                  <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:badge.color}}>{badge.icon} {badge.label}</span>
+                    {prof.location&&<span style={{fontSize:10,color:C.muted}}>📍 {prof.location}</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  {isFriend(u2.id)?<button onClick={()=>onOpenDM&&onOpenDM(u2)} style={{...BS,fontSize:11,padding:"5px 10px"}}>💬</button>
+                    :isPending(u2.id)?<span style={{fontSize:11,color:C.muted,padding:"5px 0"}}>En attente</span>
+                    :<button onClick={()=>addFriend(u2.id)} style={{...BS,fontSize:11,padding:"5px 10px"}}>+ Ami</button>
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Panel ──────────────────────────────────────────────────────────────
+function AdminPanel({user,lang,onClose,onViewProfile}){
+  const [stats,setStats]=useState(null);
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [tab,setTab]=useState("stats");
+
+  useEffect(()=>{
+    api.getAdminStats().then(setStats).catch(()=>{});
+    api.getAdminUsers().then(d=>setUsers(d.users||[])).catch(()=>{}).finally(()=>setLoading(false));
+  },[]);
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:500,overflowY:"auto",padding:"24px 16px"}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,width:"100%",maxWidth:680,overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>
+          <h2 style={{margin:0,fontSize:17,color:C.text,flex:1}}>⚡ Panneau d'administration</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:22}}>×</button>
+        </div>
+        <div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
+          {[{k:"stats",l:"📊 Stats"},{k:"users",l:"👥 Utilisateurs"}].map(tb=>(
+            <button key={tb.k} onClick={()=>setTab(tb.k)} style={{flex:1,background:tab===tb.k?`${C.gold}10`:"transparent",border:"none",borderBottom:tab===tb.k?`2px solid ${C.gold}`:"2px solid transparent",padding:"11px",fontSize:13,color:tab===tb.k?C.gold:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{tb.l}</button>
+          ))}
+        </div>
+
+        <div style={{padding:"20px",maxHeight:"72vh",overflowY:"auto"}}>
+          {tab==="stats"&&(
+            <div>
+              {!stats&&<p style={{color:C.muted,textAlign:"center"}}>Chargement…</p>}
+              {stats&&(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:12}}>
+                  {[
+                    {label:"👤 Membres",value:stats.userCount,color:C.gold},
+                    {label:"📋 Listes",value:stats.listCount,color:C.blue},
+                    {label:"🎬 Titres",value:stats.itemCount,color:C.purple},
+                    {label:"💬 Messages",value:stats.msgCount,color:C.success},
+                    {label:"📖 Journal",value:stats.watchlogCount,color:C.warning},
+                  ].map(s=>(
+                    <div key={s.label} style={{background:C.card,borderRadius:12,padding:"16px 14px",textAlign:"center",border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:26,fontWeight:700,color:s.color}}>{s.value??0}</div>
+                      <div style={{fontSize:11,color:C.muted,marginTop:4}}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab==="users"&&(
+            <div>
+              {loading&&<p style={{color:C.muted,textAlign:"center"}}>Chargement…</p>}
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {users.map((u2,i)=>{
+                  const gr=GLOBAL_ROLES[u2.global_role];
+                  return(
+                    <div key={u2.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.card,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer"}}
+                      onClick={()=>onViewProfile(u2.id)}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.gold}40`}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                      <Avatar username={u2.username||"?"} avatarUrl={u2.avatar_url} index={i} size={34}/>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{fontSize:13,color:C.text,fontWeight:600}}>{u2.username}</span>
+                          {gr&&u2.global_role!=="user"&&<GlobalRoleBadge role={u2.global_role} size="small"/>}
+                          {u2.is_banned&&<span style={{fontSize:9,color:C.danger,background:"rgba(248,113,113,0.15)",padding:"1px 5px",borderRadius:99}}>🚫 Banni</span>}
+                        </div>
+                        <span style={{fontSize:10,color:C.muted}}>{u2.email} · Inscrit le {new Date(u2.created_at).toLocaleDateString("fr-FR")}</span>
+                      </div>
+                      <span style={{fontSize:12,color:C.muted}}>›</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
 function AuthScreen({onLogin,lang,setLang,theme,setTheme}){
   const [mode,setMode]=useState("login");
@@ -1734,7 +1999,7 @@ function AuthScreen({onLogin,lang,setLang,theme,setTheme}){
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:"36px 32px",width:"100%",maxWidth:360}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{fontSize:38,marginBottom:8}}>🎞</div>
-          <h1 style={{margin:"0 0 4px",fontFamily:"'Playfair Display',serif",fontSize:24,background:`linear-gradient(90deg,${C.gold},#F5D688)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Watchlist</h1>
+          <h1 style={{margin:"0 0 4px",fontFamily:"'Playfair Display',serif",fontSize:24,color:C.gold,fontWeight:700}}>🎞 Watchlist</h1>
           <p style={{margin:0,color:C.muted,fontSize:13}}>{mode==="login"?t(lang,"tagline_login"):mode==="register"?t(lang,"tagline_register"):t(lang,"forgot_desc")}</p>
         </div>
         {mode==="forgot"?(
@@ -1817,6 +2082,9 @@ export default function App(){
   const [viewProfileId,setViewProfileId]=useState(null);
   const [searchOpen,setSearchOpen]=useState(false);
   const [watchlogOpen,setWatchlogOpen]=useState(false);
+  const [directoryOpen,setDirectoryOpen]=useState(false);
+  const [adminOpen,setAdminOpen]=useState(false);
+  const [isMobile]=useState(()=>window.innerWidth<768);
   // Sidebar
   const [newName,setNewName]=useState("");
   const [joinCode,setJoinCode]=useState("");
@@ -1832,6 +2100,12 @@ export default function App(){
 
   const changeLang=l=>{setLang(l);localStorage.setItem("wl_lang",l);};
   const changeTheme=t=>{setTheme(t);localStorage.setItem("wl_theme",t);};
+  const [isMobileState,setIsMobileState]=useState(()=>window.innerWidth<768);
+  useEffect(()=>{
+    const h=()=>setIsMobileState(window.innerWidth<768);
+    window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);
+  },[]);
+  const isMob=isMobileState;
   // Apply theme to C dynamically
   const TC=getThemeColors(theme);
   // Override C values with current theme (mutate for all components in render scope)
@@ -1978,12 +2252,12 @@ export default function App(){
       <style>{`body{background:${C.bg};transition:background 0.3s;}::-webkit-scrollbar-thumb{background:${C.gold}33;} ::selection{background:${C.gold}44;}`}</style>
 
       {/* ── Sidebar ─────────────────────────────────────── */}
-      <div style={{width:214,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",padding:"16px 12px",gap:14,minHeight:"100vh",boxSizing:"border-box",overflowY:"auto"}}>
+      <div style={{width:isMob?0:214,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,display:isMob?"none":"flex",flexDirection:"column",padding:"16px 12px",gap:14,minHeight:"100vh",boxSizing:"border-box",overflowY:"auto"}}>
 
         {/* Logo */}
         <div>
           <div style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setPage("home")}>
-            <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,background:`linear-gradient(90deg,${C.gold},#F5D688)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>🎞 Watchlist</span>
+            <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:C.gold,fontWeight:700}}>🎞 Watchlist</span>
           </div>
           {/* User row */}
           <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",background:"rgba(255,255,255,0.03)",borderRadius:8,marginBottom:6}}>
@@ -2002,9 +2276,13 @@ export default function App(){
 
         {/* Nav */}
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          <button onClick={()=>setPage("home")} style={{background:page==="home"?"rgba(201,168,76,0.08)":"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:page==="home"?C.gold:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🏠 Accueil</button>
+          <button onClick={()=>setPage("home")} style={{background:page==="home"?`${C.gold}14`:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:page==="home"?C.gold:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🏠 Accueil</button>
           <button onClick={()=>setWatchlogOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>📖 Mon journal</button>
           <button onClick={()=>setSearchOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🔍 Rechercher</button>
+          <button onClick={()=>setDirectoryOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🌐 Membres</button>
+          {["superadmin","admin"].includes(myProfile.global_role)&&(
+            <button onClick={()=>setAdminOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.danger,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>⚡ Admin</button>
+          )}
         </div>
 
         {/* Lists */}
@@ -2042,7 +2320,7 @@ export default function App(){
         {/* ── HOME PAGE ── */}
         {page==="home"&&(
           <HomePage
-            user={user} profiles={profiles} lang={lang}
+            user={user} profiles={profiles} lang={lang} isMob={isMob}
             onOpenList={id=>{setCurrentId(id);setPage("list");}}
             onViewProfile={setViewProfileId}
             onSearch={()=>setSearchOpen(true)}
@@ -2062,7 +2340,7 @@ export default function App(){
             </div>
           ):(<>
             {/* Header */}
-            <div style={{borderBottom:`1px solid ${C.border}`,padding:"14px 22px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",flexShrink:0}}>
+            <div style={{borderBottom:`1px solid ${C.border}`,padding:isMob?"10px 14px":"14px 22px",display:"flex",alignItems:"center",gap:isMob?8:12,flexWrap:"wrap",flexShrink:0}}>
               <div style={{flex:1}}>
                 <h2 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif"}}>{currentList.name}</h2>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
@@ -2111,7 +2389,7 @@ export default function App(){
                   <p style={{margin:0}}>{items.length===0?t(lang,"add_first"):t(lang,"no_results")}</p>
                 </div>
               ):(
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))",gap:14}}>
+                <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${isMob?"140px":"175px"},1fr))`,gap:isMob?10:14,paddingBottom:isMob?80:0}}>
                   {filtered.map(item=>(
                     <ItemCard key={item.id} item={item} user={user} members={members} profiles={profiles}
                       onEdit={setItemModal} onDelete={removeItem} lang={lang}
@@ -2123,6 +2401,25 @@ export default function App(){
           </>)}
         </>)}
       </div>
+
+      {/* ── Mobile bottom nav ─────────────────────────────── */}
+      {isMob&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.surface,borderTop:`1px solid ${C.border}`,display:"flex",zIndex:200,paddingBottom:"env(safe-area-inset-bottom)"}}>
+          {[
+            {icon:"🏠",label:"Accueil",action:()=>setPage("home"),active:page==="home"},
+            {icon:"🔍",label:"Chercher",action:()=>setSearchOpen(true),active:false},
+            {icon:"📖",label:"Journal",action:()=>setWatchlogOpen(true),active:false},
+            {icon:"👥",label:"Amis",action:()=>setFriendsOpen(true),active:false,badge:unreadCount},
+            {icon:"⚙️",label:"Profil",action:()=>setSettingsOpen(true),active:false},
+          ].map(item=>(
+            <button key={item.label} onClick={item.action} style={{flex:1,background:"transparent",border:"none",cursor:"pointer",padding:"10px 4px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative",fontFamily:"inherit"}}>
+              <span style={{fontSize:20}}>{item.icon}</span>
+              <span style={{fontSize:9,color:item.active?C.gold:C.muted}}>{item.label}</span>
+              {item.badge>0&&<NotifBadge count={item.badge}/>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Modals & Panels ─────────────────────────────── */}
       {itemModal!==null&&(
@@ -2136,7 +2433,7 @@ export default function App(){
       )}
       {shareModal&&currentList&&<ShareModal list={currentList} lang={lang} onClose={()=>setShareModal(false)}/>}
       {chatOpen&&currentList&&<ChatPanel listId={currentId} listName={currentList.name} user={user} members={members} profiles={profiles} lang={lang} onClose={()=>setChatOpen(false)}/>}
-      {listSettings&&currentList&&<ListSettingsModal list={currentList} user={user} lang={lang} onClose={()=>setListSettings(false)} onUpdated={()=>{loadLists();setListSettings(false);}}/>}
+      {listSettings&&currentList&&<ListSettingsModal list={currentList} user={user} lang={lang} profiles={profiles} onClose={()=>setListSettings(false)} onUpdated={()=>{loadLists();setListSettings(false);}} onDeleted={()=>{setCurrentId(null);setPage("home");setListSettings(false);loadLists();}}/>}
       {settingsOpen&&(
         <SettingsPanel user={user} lang={lang} setLang={changeLang} theme={theme} setTheme={changeTheme} onClose={()=>setSettingsOpen(false)}
           onUpdated={()=>api.getProfile(user.id).then(p=>{setProfiles(prev=>({...prev,[user.id]:p}));setConfirmDelete(p.confirm_delete!==false);})}/>
@@ -2152,6 +2449,8 @@ export default function App(){
       {notifsOpen&&<NotificationsPanel user={user} lang={lang} onClose={()=>setNotifsOpen(false)}/>}
       {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
       {watchlogOpen&&<WatchlogPage user={user} lang={lang} onClose={()=>setWatchlogOpen(false)}/>}
+      {directoryOpen&&<UserDirectory user={user} profiles={profiles} lang={lang} onClose={()=>setDirectoryOpen(false)} onViewProfile={id=>{setViewProfileId(id);setDirectoryOpen(false);}} onOpenDM={f=>{setDmFriend(f);setDirectoryOpen(false);}}/>}
+      {adminOpen&&<AdminPanel user={user} lang={lang} onClose={()=>setAdminOpen(false)} onViewProfile={id=>{setViewProfileId(id);setAdminOpen(false);}}/>}
     </div>
   );
 }
