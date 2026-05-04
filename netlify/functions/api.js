@@ -551,12 +551,34 @@ async function moderationAction(actor, { targetId, action, reason, newRole }) {
   const actorRole = await getGlobalRole(actor.id);
   if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
 
+  // Superadmin-only: delete another user's account
+  if (action === "delete_account") {
+    if (actorRole !== "superadmin") return err("Only superadmin can delete accounts", 403);
+    if (targetId === actor.id) return err("Cannot delete your own account via mod action");
+    // Log before deletion
+    await db.from("moderation_actions").insert({
+      id: Math.random().toString(36).slice(2,9) + Date.now().toString(36),
+      target_id: targetId, mod_id: actor.id, mod_name: actor.username,
+      action: "delete_account", reason: reason || "Suppression par superadmin",
+    });
+    // Run full account deletion
+    const fakeUser = { id: targetId, username: "?" };
+    return await deleteAccount(fakeUser);
+  }
+
   if (action === "role_change") {
     if (!canAdmin(actorRole)) return err("Only admins can change roles", 403);
     const validRoles = ["moderator","vip","user"];
     if (actorRole === "superadmin") validRoles.push("admin");
     if (!validRoles.includes(newRole)) return err("Invalid role");
     await db.from("profiles").update({ global_role: newRole }).eq("id", targetId);
+  }
+
+  if (action === "ban") {
+    await db.from("profiles").update({ is_banned: true }).eq("id", targetId);
+  }
+  if (action === "unban") {
+    await db.from("profiles").update({ is_banned: false }).eq("id", targetId);
   }
 
   // Log the action

@@ -1881,7 +1881,7 @@ function UserDirectory({user,profiles,lang,onClose,onViewProfile,onOpenDM}){
 }
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
-function AdminPanel({user,lang,onClose,onViewProfile}){
+function AdminPanel({user,lang,onClose,onViewProfile,myRole}){
   const [stats,setStats]=useState(null);
   const [users,setUsers]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -1948,7 +1948,23 @@ function AdminPanel({user,lang,onClose,onViewProfile}){
                         </div>
                         <span style={{fontSize:12,color:C.muted}}>{u2.email} · Inscrit le {new Date(u2.created_at).toLocaleDateString("fr-FR")}</span>
                       </div>
-                      <span style={{fontSize:12,color:C.muted}}>›</span>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:12,color:C.muted}}>›</span>
+                        {myRole==="superadmin"&&u2.id!==user.id&&(
+                          <button onClick={async e=>{
+                            e.stopPropagation();
+                            if(!window.confirm(`Supprimer le compte de "${u2.username}" ?`)) return;
+                            if(!window.confirm(`CONFIRMATION FINALE — Cette action est irréversible et supprimera toutes les données de "${u2.username}".`)) return;
+                            try{
+                              await api.modAction({targetId:u2.id,action:"delete_account",reason:"Suppression par superadmin"});
+                              setUsers(prev=>prev.filter(x=>x.id!==u2.id));
+                              if(stats) setStats(s=>({...s,userCount:(s.userCount||1)-1}));
+                            }catch(err2){alert("Erreur: "+err2.message);}
+                          }} style={{background:"rgba(248,113,113,0.12)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"#F87171",cursor:"pointer",fontFamily:"inherit",fontWeight:600}} title="Supprimer ce compte">
+                            🗑 Supprimer
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -2450,7 +2466,7 @@ export default function App(){
       {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
       {watchlogOpen&&<WatchlogPage user={user} lang={lang} onClose={()=>setWatchlogOpen(false)}/>}
       {directoryOpen&&<UserDirectory user={user} profiles={profiles} lang={lang} onClose={()=>setDirectoryOpen(false)} onViewProfile={id=>{setViewProfileId(id);setDirectoryOpen(false);}} onOpenDM={f=>{setDmFriend(f);setDirectoryOpen(false);}}/>}
-      {adminOpen&&<AdminPanel user={user} lang={lang} onClose={()=>setAdminOpen(false)} onViewProfile={id=>{setViewProfileId(id);setAdminOpen(false);}}/>}
+      {adminOpen&&<AdminPanel user={user} lang={lang} myRole={myProfile.global_role} onClose={()=>setAdminOpen(false)} onViewProfile={id=>{setViewProfileId(id);setAdminOpen(false);}}/>}
     </div>
   );
 }
