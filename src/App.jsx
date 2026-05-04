@@ -1800,6 +1800,138 @@ function WatchlogPage({user,lang,onClose}){
   );
 }
 
+// ─── Watchlog Page Inline (inside main layout with sidebar) ─────────────────
+function WatchlogPageInline({user,lang,onBack}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(null);
+  const [filterStatus,setFilterStatus]=useState("all");
+  const [filterCat,setFilterCat]=useState("all");
+  const [search,setSearch]=useState("");
+  const [searchOpen,setSearchOpen]=useState(false);
+
+  useEffect(()=>{api.getWatchlog().then(d=>{setItems(d);setLoading(false);});},[]);
+
+  const deleteItem=async(id)=>{await api.deleteWatchlog(id);setItems(p=>p.filter(i=>i.id!==id));};
+  const handleSearchSelect=async(tmdbItem)=>{
+    setModal({title:tmdbItem.title,category:tmdbItem.category||"film",poster_url:tmdbItem.poster_url||"",tags:[],status:"a_voir",rating:0,minutes:0,season:0,episode:0,notes:"",tmdb_id:tmdbItem.tmdb_id||null,runtime:tmdbItem.runtime||null});
+  };
+  const save=async(form)=>{
+    if(form.id){await api.updateWatchlog(form.id,form);setItems(p=>p.map(i=>i.id===form.id?{...i,...form}:i));}
+    else{const saved=await api.addToWatchlog(form);setItems(p=>[saved,...p]);}
+    setModal(null);
+  };
+
+  const filtered=items.filter(i=>{
+    if(filterStatus!=="all"&&i.status!==filterStatus) return false;
+    if(filterCat!=="all"&&i.category!==filterCat) return false;
+    if(search&&!i.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const counts={
+    a_voir: items.filter(i=>i.status==="a_voir").length,
+    en_cours:items.filter(i=>i.status==="en_cours").length,
+    termine: items.filter(i=>i.status==="termine").length,
+  };
+  const STATUS=getStatus(lang);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
+      {/* Header */}
+      <div style={{borderBottom:`1px solid ${C.border}`,padding:"14px 22px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap"}}>
+        <div style={{flex:1}}>
+          <h2 style={{margin:0,fontSize:19,fontFamily:"'Playfair Display',serif",fontWeight:700}}>📖 Mon journal</h2>
+          <p style={{margin:"3px 0 0",fontSize:13,color:C.text,opacity:0.65}}>{items.length} titre{items.length>1?"s":""} · personnel</p>
+        </div>
+        {/* Stats */}
+        <div style={{display:"flex",gap:8}}>
+          {[{k:"a_voir",l:t(lang,"to_watch")},{k:"en_cours",l:t(lang,"watching")},{k:"termine",l:t(lang,"watched")}].map(s=>(
+            <div key={s.k} style={{textAlign:"center",padding:"4px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8}}>
+              <div style={{fontSize:20,fontWeight:800,color:STATUS[s.k].color,lineHeight:1.2}}>{counts[s.k]}</div>
+              <div style={{fontSize:11,color:C.text,opacity:0.7,textTransform:"uppercase",letterSpacing:0.5,marginTop:3,fontWeight:500}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>setSearchOpen(true)} style={{...BS,fontSize:12,padding:"7px 12px"}}>🔍 Chercher</button>
+        <button onClick={()=>setModal({})} style={{...BP,fontSize:13}}>+ Ajouter</button>
+      </div>
+
+      {/* Filters */}
+      <div style={{padding:"10px 22px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t(lang,"search")} style={{...IS,background:"rgba(255,255,255,0.03)",fontSize:13,marginBottom:8}}/>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+          <FBtn label={t(lang,"all")} active={filterStatus==="all"} onClick={()=>setFilterStatus("all")}/>
+          <FBtn label={t(lang,"to_watch")} active={filterStatus==="a_voir"} color={C.muted} onClick={()=>setFilterStatus("a_voir")}/>
+          <FBtn label={t(lang,"watching")} active={filterStatus==="en_cours"} color={C.warning} onClick={()=>setFilterStatus("en_cours")}/>
+          <FBtn label={t(lang,"watched")} active={filterStatus==="termine"} color={C.success} onClick={()=>setFilterStatus("termine")}/>
+          <span style={{color:C.border,margin:"0 3px"}}>|</span>
+          {CATEGORIES.slice(0,5).map(c=><FBtn key={c.id} label={c.short} active={filterCat===c.id} onClick={()=>setFilterCat(filterCat===c.id?"all":c.id)}/>)}
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+        {loading&&<p style={{color:C.muted,textAlign:"center",paddingTop:40}}>…</p>}
+        {!loading&&filtered.length===0&&(
+          <div style={{textAlign:"center",color:C.muted,paddingTop:60}}>
+            <div style={{fontSize:44,marginBottom:12}}>📖</div>
+            <p style={{margin:0,fontSize:15}}>{items.length===0?"Ton journal est vide. Commence par ajouter un titre !":"Aucun résultat pour ces filtres."}</p>
+          </div>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+          {filtered.map(item=>{
+            const st=getStatus(lang)[item.status]||getStatus(lang).a_voir;
+            const maxMin=parseInt(item.runtime)||0;
+            const curMin=parseInt(item.minutes)||0;
+            const pct=maxMin>0?Math.round(curMin/maxMin*100):null;
+            return(
+              <div key={item.id} style={{background:C.card,borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",transition:"border-color 0.15s,transform 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=`${C.gold}50`;e.currentTarget.style.transform="translateY(-2px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
+                <div style={{height:160,position:"relative",background:"rgba(255,255,255,0.03)",overflow:"hidden"}}>
+                  {item.poster_url
+                    ?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                    :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,opacity:0.1}}>🎬</div>}
+                  <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,${C.bg}cc 0%,transparent 55%)`}}/>
+                  <div style={{position:"absolute",top:8,right:8}}>
+                    <span style={{fontSize:11,fontWeight:700,background:`${st.color}25`,color:st.color,padding:"3px 9px",borderRadius:99,border:`1px solid ${st.color}60`}}>{st.label}</span>
+                  </div>
+                </div>
+                <div style={{padding:"9px 11px",flex:1,display:"flex",flexDirection:"column",gap:5}}>
+                  <p style={{margin:0,fontSize:14,color:C.text,fontWeight:700,lineHeight:1.3}}>{item.title}</p>
+                  <p style={{margin:0,fontSize:12,color:C.text,opacity:0.65}}>{CAT_SHORT[item.category]||item.category}</p>
+                  {/* Progress bar */}
+                  {item.status==="en_cours"&&(item.category==="film"||item.category==="short")&&curMin>0&&(
+                    <div>
+                      <div style={{height:3,background:C.border,borderRadius:99,overflow:"hidden"}}>
+                        <div style={{height:"100%",background:C.gold,borderRadius:99,width:`${Math.min(100,pct||0)}%`}}/>
+                      </div>
+                      <span style={{fontSize:11,color:C.gold,fontWeight:600}}>{curMin}min{maxMin>0?` / ${maxMin}min`:""} {pct!==null?`(${pct}%)`:""}</span>
+                    </div>
+                  )}
+                  {item.status==="en_cours"&&item.category!=="film"&&(item.season||item.episode)&&(
+                    <span style={{fontSize:12,color:C.warning,fontWeight:600}}>S{item.season||"?"}·E{item.episode||"?"}</span>
+                  )}
+                  {item.rating>0&&<Stars value={item.rating} size={11}/>}
+                  {item.notes&&<p style={{margin:0,fontSize:11,color:C.text,opacity:0.5,fontStyle:"italic",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>"{item.notes}"</p>}
+                </div>
+                <div style={{padding:"6px 11px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end",gap:4}}>
+                  <button onClick={()=>setModal(item)} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14,padding:"2px 5px"}}>✏️</button>
+                  <button onClick={()=>deleteItem(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14,padding:"2px 5px"}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {modal!==null&&<WatchlogModal item={Object.keys(modal).length?modal:null} lang={lang} onSave={save} onClose={()=>setModal(null)}/>}
+      {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
+    </div>
+  );
+}
+
 // ─── Watchlog Item Modal ──────────────────────────────────────────────────────
 function WatchlogModal({item,lang,onSave,onClose}){
   const blank={title:"",category:"film",status:"a_voir",poster_url:"",tags:[],rating:0,minutes:0,season:0,episode:0,notes:""};
@@ -2155,7 +2287,7 @@ export default function App(){
   const [user,setUser]=useState(()=>api.getUser());
   const [lang,setLang]=useState(()=>localStorage.getItem("wl_lang")||"fr");
   const [theme,setTheme]=useState(()=>localStorage.getItem("wl_theme")||"dark");
-  const [page,setPage]=useState("home"); // "home" | "list"
+  const [page,setPage]=useState("home"); // "home" | "list" | "watchlog"
   const [lists,setLists]=useState([]);
   const [currentId,setCurrentId]=useState(null);
   const [items,setItems]=useState([]);
@@ -2172,7 +2304,6 @@ export default function App(){
   const [dmFriend,setDmFriend]=useState(null);
   const [viewProfileId,setViewProfileId]=useState(null);
   const [searchOpen,setSearchOpen]=useState(false);
-  const [watchlogOpen,setWatchlogOpen]=useState(false);
   const [directoryOpen,setDirectoryOpen]=useState(false);
   const [adminOpen,setAdminOpen]=useState(false);
   const [isMobile]=useState(()=>window.innerWidth<768);
@@ -2368,7 +2499,7 @@ export default function App(){
         {/* Nav */}
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
           <button onClick={()=>setPage("home")} style={{background:page==="home"?`${C.gold}14`:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:page==="home"?C.gold:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🏠 Accueil</button>
-          <button onClick={()=>setWatchlogOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>📖 Mon journal</button>
+          <button onClick={()=>setPage("watchlog")} style={{background:page==="watchlog"?`${C.gold}14`:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:page==="watchlog"?C.gold:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>📖 Mon journal</button>
           <button onClick={()=>setSearchOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🔍 Rechercher</button>
           <button onClick={()=>setDirectoryOpen(true)} style={{background:"transparent",border:"none",borderRadius:8,padding:"7px 9px",fontSize:13,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>🌐 Membres</button>
           {["superadmin","admin"].includes(myProfile.global_role)&&(
@@ -2417,12 +2548,16 @@ export default function App(){
             onSearch={()=>setSearchOpen(true)}
             onOpenSettings={()=>setSettingsOpen(true)}
             onOpenFriends={()=>setFriendsOpen(true)}
-            onOpenWatchlog={()=>setWatchlogOpen(true)}
+            onOpenWatchlog={()=>setPage("watchlog")}
             unreadCount={unreadCount}
           />
         )}
 
         {/* ── LIST PAGE ── */}
+        {page==="watchlog"&&(
+          <WatchlogPageInline user={user} lang={lang} onBack={()=>setPage("home")}/>
+        )}
+
         {page==="list"&&(<>
           {!currentList?(
             <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:C.muted,gap:14,padding:40}}>
@@ -2499,7 +2634,7 @@ export default function App(){
           {[
             {icon:"🏠",label:"Accueil",action:()=>setPage("home"),active:page==="home"},
             {icon:"🔍",label:"Chercher",action:()=>setSearchOpen(true),active:false},
-            {icon:"📖",label:"Journal",action:()=>setWatchlogOpen(true),active:false},
+            {icon:"📖",label:"Journal",action:()=>setPage("watchlog"),active:page==="watchlog"},
             {icon:"👥",label:"Amis",action:()=>setFriendsOpen(true),active:false,badge:unreadCount},
             {icon:"⚙️",label:"Profil",action:()=>setSettingsOpen(true),active:false},
           ].map(item=>(
@@ -2539,7 +2674,6 @@ export default function App(){
       {viewProfileId&&<PublicProfileModal userId={viewProfileId} currentUser={user} lang={lang} onClose={()=>setViewProfileId(null)}/>}
       {notifsOpen&&<NotificationsPanel user={user} lang={lang} onClose={()=>setNotifsOpen(false)}/>}
       {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
-      {watchlogOpen&&<WatchlogPage user={user} lang={lang} onClose={()=>setWatchlogOpen(false)}/>}
       {directoryOpen&&<UserDirectory user={user} profiles={profiles} lang={lang} onClose={()=>setDirectoryOpen(false)} onViewProfile={id=>{setViewProfileId(id);setDirectoryOpen(false);}} onOpenDM={f=>{setDmFriend(f);setDirectoryOpen(false);}}/>}
       {adminOpen&&<AdminPanel user={user} lang={lang} myRole={myProfile.global_role} onClose={()=>setAdminOpen(false)} onViewProfile={id=>{setViewProfileId(id);setAdminOpen(false);}}/>}
     </div>
