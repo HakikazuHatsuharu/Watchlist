@@ -680,11 +680,12 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
   const [form,setForm]=useState(item?{...item}:prefill?{...blank,...prefill,user_progress:{}}:blank);
   const [saving,setSaving]=useState(false);
 
-  // Auto-fetch runtime from TMDB if not already set
+  // Auto-fetch runtime from TMDB (always fetch to get accurate value)
   useEffect(()=>{
     const tmdbId=form.tmdb_id||(item?.tmdb_id)||(prefill?.tmdb_id);
     const cat=form.category||item?.category||prefill?.category||"film";
-    if(tmdbId&&!form.runtime){
+    const isFilmType=["film","short","documentary"].includes(cat);
+    if(tmdbId&&isFilmType){
       import('./lib/tmdb.js').then(m=>m.getTMDBDetails(tmdbId,cat)).then(details=>{
         if(details?.runtime) setForm(f=>({...f,runtime:details.runtime}));
       }).catch(()=>{});
@@ -1056,7 +1057,24 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
                 </select>
               </>}
             </div>
-            {modMsg&&<p style={{fontSize:11,color:modMsg.startsWith("✓")?C.success:C.danger,margin:"6px 0 0"}}>{modMsg}</p>}
+            {/* Superadmin: delete account */}
+            {myRole==="superadmin"&&(
+              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(248,113,113,0.2)"}}>
+                <p style={{margin:"0 0 8px",fontSize:11,color:C.muted}}>Zone dangereuse — irréversible</p>
+                <button onClick={async()=>{
+                  if(!window.confirm(`Supprimer définitivement le compte de "${data.username}" ?`)) return;
+                  if(!window.confirm(`CONFIRMATION FINALE — Toutes les données de "${data.username}" seront effacées.`)) return;
+                  try{
+                    await api.modAction({targetId:userId,action:"delete_account",reason:modReason||"Suppression par superadmin"});
+                    setModMsg("✓ Compte supprimé.");
+                    setTimeout(()=>onClose(),1500);
+                  }catch(e){setModMsg("❌ "+e.message);}
+                }} style={{background:"rgba(248,113,113,0.15)",border:"1px solid rgba(248,113,113,0.4)",borderRadius:8,padding:"7px 14px",fontSize:12,color:C.danger,cursor:"pointer",fontFamily:"inherit",fontWeight:700,width:"100%"}}>
+                  🗑 Supprimer ce compte
+                </button>
+              </div>
+            )}
+            {modMsg&&<p style={{fontSize:12,color:modMsg.startsWith("✓")?C.success:C.danger,margin:"8px 0 0",fontWeight:600}}>{modMsg}</p>}
           </div>}
 
           <p style={{margin:0,fontSize:13,color:C.text,opacity:0.45,textAlign:"center"}}>
@@ -1934,10 +1952,22 @@ function WatchlogPageInline({user,lang,onBack}){
 
 // ─── Watchlog Item Modal ──────────────────────────────────────────────────────
 function WatchlogModal({item,lang,onSave,onClose}){
-  const blank={title:"",category:"film",status:"a_voir",poster_url:"",tags:[],rating:0,minutes:0,season:0,episode:0,notes:""};
+  const blank={title:"",category:"film",status:"a_voir",poster_url:"",tags:[],rating:0,minutes:0,season:0,episode:0,notes:"",runtime:null};
   const [form,setForm]=useState(item?{...item}:blank);
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  // Auto-fetch runtime from TMDB
+  useEffect(()=>{
+    const tmdbId=form.tmdb_id||item?.tmdb_id;
+    const cat=form.category||"film";
+    const isFilmType=["film","short","documentary"].includes(cat);
+    if(tmdbId&&isFilmType){
+      import('./lib/tmdb.js').then(m=>m.getTMDBDetails(tmdbId,cat)).then(details=>{
+        if(details?.runtime) setForm(f=>({...f,runtime:details.runtime}));
+      }).catch(()=>{});
+    }
+  },[]);
   const st=getStatus(lang)[form.status]||getStatus(lang).a_voir;
 
   return(
@@ -2306,7 +2336,6 @@ export default function App(){
   const [searchOpen,setSearchOpen]=useState(false);
   const [directoryOpen,setDirectoryOpen]=useState(false);
   const [adminOpen,setAdminOpen]=useState(false);
-  const [isMobile]=useState(()=>window.innerWidth<768);
   // Sidebar
   const [newName,setNewName]=useState("");
   const [joinCode,setJoinCode]=useState("");
@@ -2537,7 +2566,7 @@ export default function App(){
       </div>
 
       {/* ── Main area ───────────────────────────────────── */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,maxHeight:"100vh",overflowY:"auto"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,maxHeight:"100vh",overflowY:page==="watchlog"?"hidden":"auto"}}>
 
         {/* ── HOME PAGE ── */}
         {page==="home"&&(
@@ -2555,7 +2584,9 @@ export default function App(){
 
         {/* ── LIST PAGE ── */}
         {page==="watchlog"&&(
-          <WatchlogPageInline user={user} lang={lang} onBack={()=>setPage("home")}/>
+          <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,maxHeight:"100vh",overflowY:"auto"}}>
+            <WatchlogPageInline user={user} lang={lang} onBack={()=>setPage("home")}/>
+          </div>
         )}
 
         {page==="list"&&(<>
