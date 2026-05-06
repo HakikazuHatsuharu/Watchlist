@@ -10,8 +10,23 @@ function canModerate(role) { return ROLE_LEVELS[role] >= 3; }
 function canAdmin(role)    { return ROLE_LEVELS[role] >= 4; }
 
 async function getGlobalRole(userId) {
-  const { data } = await db.from("profiles").select("global_role").eq("id", userId).single();
-  return data?.global_role || "user";
+  const { data, error } = await db.from("profiles").select("global_role,is_banned").eq("id", userId).single();
+  if (error || !data) return "user";
+  if (data.is_banned) return "banned"; // banned users get no perms
+  return data.global_role || "user";
+}
+
+// Strict action-level permission check
+function actionAllowed(actorRole, action) {
+  const PERMS = {
+    "warn":          ["superadmin","admin","moderator"],
+    "mute":          ["superadmin","admin","moderator"],
+    "ban":           ["superadmin","admin"],
+    "unban":         ["superadmin","admin"],
+    "role_change":   ["superadmin","admin"],
+    "delete_account":["superadmin"],
+  };
+  return (PERMS[action] || []).includes(actorRole);
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -549,7 +564,14 @@ async function getHomeFeed(user) {
 // ─── Moderation ─────────────────────────────────────────────────────────────────
 async function moderationAction(actor, { targetId, action, reason, newRole }) {
   const actorRole = await getGlobalRole(actor.id);
-  if (!canModerate(actorRole)) return err("Insufficient permissions", 403);
+  // Check permission for this specific action
+  if (!actionAllowed(actorRole, action)) return err("Insufficient permissions for this action", 403);
+  // Cannot act on yourself
+  if (targetId === actor.id && action !== "warn") return err("Cannot perform this action on yourself", 403);
+  // Cannot act on someone with equal or higher role
+  const targetRole = await getGlobalRole(targetId);
+  const LEVELS = { superadmin:5, admin:4, moderator:3, vip:2, user:1, banned:0 };
+  if ((LEVELS[targetRole]||1) >= (LEVELS[actorRole]||1)) return err("Cannot act on a user with equal or higher role", 403);
 
   // Superadmin-only: delete another user's account
   if (action === "delete_account") {
@@ -567,10 +589,9 @@ async function moderationAction(actor, { targetId, action, reason, newRole }) {
   }
 
   if (action === "role_change") {
-    if (!canAdmin(actorRole)) return err("Only admins can change roles", 403);
     const validRoles = ["moderator","vip","user"];
     if (actorRole === "superadmin") validRoles.push("admin");
-    if (!validRoles.includes(newRole)) return err("Invalid role");
+    if (!newRole || !validRoles.includes(newRole)) return err("Invalid role");
     await db.from("profiles").update({ global_role: newRole }).eq("id", targetId);
   }
 

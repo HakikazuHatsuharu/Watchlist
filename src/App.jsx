@@ -926,17 +926,16 @@ function DMPanel({friend,user,profiles,lang,onClose}){
 }
 
 // ─── Public Profile Modal ─────────────────────────────────────────────────────
-function PublicProfileModal({userId,currentUser,lang,onClose}){
+function PublicProfileModal({userId,currentUser,lang,onClose,viewerRole="user"}){
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
   const [modReason,setModReason]=useState("");
   const [modMsg,setModMsg]=useState("");
-  const [myRole,setMyRole]=useState("user");
+  const myRole = viewerRole; // passed from parent who already has the correct role
 
   useEffect(()=>{
     api.getPublicProfile(userId).then(d=>{setData(d);setLoading(false);}).catch(()=>setLoading(false));
-    api.getProfile(currentUser.id).then(p=>setMyRole(p.global_role||"user")).catch(()=>{});
-  },[userId,currentUser.id]);
+  },[userId]);
 
   const doModAction=async(action,newRole)=>{
     try{
@@ -957,8 +956,13 @@ function PublicProfileModal({userId,currentUser,lang,onClose}){
   const badge=getBadge(data.created_at||Date.now());
   const gr=GLOBAL_ROLES[data.global_role]||GLOBAL_ROLES.user;
   const isMe=userId===currentUser.id;
-  const canMod=canModerate(myRole)&&!isMe;
-  const canAdm=canAdmin(myRole)&&!isMe;
+  const ROLE_LEVELS_MAP={superadmin:5,admin:4,moderator:3,vip:2,user:1};
+  const viewerLevel=ROLE_LEVELS_MAP[myRole]||1;
+  const targetLevel=ROLE_LEVELS_MAP[data?.global_role]||1;
+  // Can only act on users with LOWER role level
+  const canAct=!isMe&&viewerLevel>targetLevel;
+  const canMod=canModerate(myRole)&&canAct;
+  const canAdm=canAdmin(myRole)&&canAct;
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:500,overflowY:"auto",padding:"32px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -2702,7 +2706,7 @@ export default function App(){
           onViewProfile={id=>{setViewProfileId(id);setFriendsOpen(false);}}/>
       )}
       {dmFriend&&<DMPanel friend={dmFriend} user={user} profiles={profiles} lang={lang} onClose={()=>setDmFriend(null)}/>}
-      {viewProfileId&&<PublicProfileModal userId={viewProfileId} currentUser={user} lang={lang} onClose={()=>setViewProfileId(null)}/>}
+      {viewProfileId&&<PublicProfileModal userId={viewProfileId} currentUser={user} lang={lang} viewerRole={myProfile.global_role||"user"} onClose={()=>setViewProfileId(null)}/>}
       {notifsOpen&&<NotificationsPanel user={user} lang={lang} onClose={()=>setNotifsOpen(false)}/>}
       {searchOpen&&<SearchModal lang={lang} user={user} onSelect={r=>{handleSearchSelect(r);setSearchOpen(false);}} onClose={()=>setSearchOpen(false)}/>}
       {directoryOpen&&<UserDirectory user={user} profiles={profiles} lang={lang} onClose={()=>setDirectoryOpen(false)} onViewProfile={id=>{setViewProfileId(id);setDirectoryOpen(false);}} onOpenDM={f=>{setDmFriend(f);setDirectoryOpen(false);}}/>}
