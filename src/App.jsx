@@ -813,26 +813,34 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
 // ─── ChatBox (reusable) ───────────────────────────────────────────────────────
 function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder}){
   const [input,setInput]=useState("");
-  const [msgsLocal,setMsgsLocal]=useState([]);
+  const [extra,setExtra]=useState([]);
   const bottomRef=useRef();
 
-  // Merge external messages + locally sent ones, dedup by id
+  // Merge prop messages + optimistic ones, deduplicate
   const allMsgs=useMemo(()=>{
-    const seen=new Set();
-    return [...messages,...msgsLocal].filter(m=>{
-      if(!m?.id||seen.has(m.id)) return false;
-      seen.add(m.id);return true;
-    }).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-  },[messages,msgsLocal]);
+    const map=new Map();
+    [...messages,...extra].forEach(m=>{if(m?.id) map.set(m.id,m);});
+    return [...map.values()].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  },[messages,extra]);
 
+  // Realtime: accept incoming from subscription (already handled by parent via messages prop)
+  // but also listen directly here as a fallback
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[allMsgs]);
+
   const send=async()=>{
-    const c=input.trim();if(!c) return;setInput("");
+    const c=input.trim();if(!c) return;
+    setInput("");
+    // Optimistic: show immediately with temp id
+    const tempMsg={id:"tmp-"+Date.now(),user_id:user.id,username:user.username,content:c,created_at:new Date().toISOString()};
+    setExtra(p=>[...p,tempMsg]);
     try{
       const saved=await onSend(c);
-      // Add own message immediately (realtime postgres_changes may not fire for sender)
-      if(saved&&saved.id) setMsgsLocal(p=>[...p,saved]);
-    }catch(e){console.error("send failed",e);}
+      // Replace temp with real
+      if(saved?.id) setExtra(p=>p.map(m=>m.id===tempMsg.id?saved:m));
+    }catch(e){
+      setExtra(p=>p.filter(m=>m.id!==tempMsg.id));
+      console.error("send failed",e);
+    }
   };
   const groups=allMsgs.reduce((acc,msg)=>{
     const last=acc[acc.length-1];
@@ -891,8 +899,14 @@ function ChatPanel({listId,listName,user,members,profiles,lang,onClose}){
   useEffect(()=>{
     api.getMessages(listId).then(m=>{setListMsgs(m);setLoadingList(false);});
     api.getGlobalChat().then(m=>{setGlobalMsgs(m);setLoadingGlobal(false);});
-    const u1=subscribeToMessages(listId,msg=>setListMsgs(p=>[...p,msg]));
-    const u2=subscribeToGlobalChat(msg=>setGlobalMsgs(p=>[...p,msg]));
+
+    const addUniq=(setter,msg)=>setter(p=>{
+      if(!msg?.id||p.some(m=>m.id===msg.id)) return p;
+      return [...p,msg];
+    });
+
+    const u1=subscribeToMessages(listId, msg=>addUniq(setListMsgs, msg));
+    const u2=subscribeToGlobalChat(msg=>addUniq(setGlobalMsgs, msg));
     return()=>{u1();u2();};
   },[listId]);
   return(
@@ -1239,13 +1253,21 @@ function PublicProfileModal({userId,currentUser,lang,onClose,viewerRole="user"})
 // ─── Friends Panel ────────────────────────────────────────────────────────────
 function FriendsPanel({user,profiles,lang,onClose,onOpenDM,onViewProfile}){
   const [friends,setFriends]=useState([]);
+  const [friendProfiles,setFriendProfiles]=useState({});
   const [searchQ,setSearchQ]=useState("");
   const [searchRes,setSearchRes]=useState([]);
   const [searching,setSearching]=useState(false);
   const [msg,setMsg]=useState("");
 
   useEffect(()=>{loadFriends();},[]);
-  const loadFriends=()=>api.getFriends().then(setFriends).catch(()=>{});
+  const loadFriends=()=>api.getFriends().then(list=>{
+    setFriends(list);
+    // Load profiles for all friends
+    list.forEach(f=>{
+      const id=f.other?.id;
+      if(id) api.getProfile(id).then(p=>setFriendProfiles(prev=>({...prev,[id]:p}))).catch(()=>{});
+    });
+  }).catch(()=>{});
 
   const doSearch=async()=>{
     if(searchQ.trim().length<2) return;
