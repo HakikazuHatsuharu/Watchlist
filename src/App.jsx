@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "./lib/api";
 import { searchTMDB } from "./lib/tmdb";
 import { t } from "./lib/i18n";
@@ -813,10 +813,28 @@ function ItemModal({item,user,listId,onSaved,onClose,lang,prefill=null,isOwnerOr
 // ─── ChatBox (reusable) ───────────────────────────────────────────────────────
 function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder}){
   const [input,setInput]=useState("");
+  const [msgsLocal,setMsgsLocal]=useState([]);
   const bottomRef=useRef();
-  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
-  const send=async()=>{const c=input.trim();if(!c) return;setInput("");try{await onSend(c);}catch{}};
-  const groups=messages.reduce((acc,msg)=>{
+
+  // Merge external messages + locally sent ones, dedup by id
+  const allMsgs=useMemo(()=>{
+    const seen=new Set();
+    return [...messages,...msgsLocal].filter(m=>{
+      if(!m?.id||seen.has(m.id)) return false;
+      seen.add(m.id);return true;
+    }).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  },[messages,msgsLocal]);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[allMsgs]);
+  const send=async()=>{
+    const c=input.trim();if(!c) return;setInput("");
+    try{
+      const saved=await onSend(c);
+      // Add own message immediately (realtime postgres_changes may not fire for sender)
+      if(saved&&saved.id) setMsgsLocal(p=>[...p,saved]);
+    }catch(e){console.error("send failed",e);}
+  };
+  const groups=allMsgs.reduce((acc,msg)=>{
     const last=acc[acc.length-1];
     if(last&&last.user_id===msg.user_id&&Date.parse(msg.created_at)-Date.parse(last.items[last.items.length-1].created_at)<120000) last.items.push(msg);
     else acc.push({user_id:msg.user_id,username:msg.username,items:[msg]});
@@ -925,13 +943,127 @@ function DMPanel({friend,user,profiles,lang,onClose}){
   );
 }
 
+// ─── User List Viewer Modal ───────────────────────────────────────────────────
+function UserListModal({listId,listName,lang,onClose}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState("");
+  useEffect(()=>{api.getPublicListItems(listId).then(setItems).catch(()=>{}).finally(()=>setLoading(false));},[listId]);
+  const filtered=items.filter(i=>!search||i.title.toLowerCase().includes(search.toLowerCase()));
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:600,overflowY:"auto",padding:"24px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,width:"100%",maxWidth:620,overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <h3 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text,flex:1}}>📋 {listName}</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:22}}>×</button>
+        </div>
+        <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filtrer…" style={IS}/>
+        </div>
+        <div style={{padding:16,maxHeight:"70vh",overflowY:"auto"}}>
+          {loading&&<p style={{textAlign:"center",color:C.muted}}>…</p>}
+          {!loading&&filtered.length===0&&<p style={{textAlign:"center",color:C.muted,paddingTop:30}}>Aucun titre.</p>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
+            {filtered.map(item=>{
+              const firstUserId=Object.keys(item.user_progress||{})[0];
+              const st=getStatus(lang)[item.user_progress?.[firstUserId]?.status||"a_voir"]||getStatus(lang).a_voir;
+              return(
+                <div key={item.id} style={{background:C.card,borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                  <div style={{height:140,position:"relative",background:"rgba(255,255,255,0.03)"}}>
+                    {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                      :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,opacity:0.1}}>🎬</div>}
+                  </div>
+                  <div style={{padding:"8px 9px"}}>
+                    <p style={{margin:0,fontSize:12,color:C.text,fontWeight:600,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
+                    <p style={{margin:"3px 0 0",fontSize:11,color:C.muted}}>{CAT_SHORT[item.category]||item.category}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── User Watchlog Viewer Modal ───────────────────────────────────────────────
+function UserWatchlogModal({userId,username,lang,onClose}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [filterStatus,setFilterStatus]=useState("all");
+  const [search,setSearch]=useState("");
+  useEffect(()=>{api.getPublicWatchlog(userId).then(setItems).catch(()=>{}).finally(()=>setLoading(false));},[userId]);
+  const STATUS=getStatus(lang);
+  const filtered=items.filter(i=>{
+    if(filterStatus!=="all"&&i.status!==filterStatus) return false;
+    if(search&&!i.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const counts={a_voir:items.filter(i=>i.status==="a_voir").length,en_cours:items.filter(i=>i.status==="en_cours").length,termine:items.filter(i=>i.status==="termine").length};
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:600,overflowY:"auto",padding:"24px 16px"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,width:"100%",maxWidth:640,overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:1}}>
+            <h3 style={{margin:0,fontSize:17,fontFamily:"'Playfair Display',serif",color:C.text}}>📖 Journal de {username}</h3>
+            <p style={{margin:"3px 0 0",fontSize:12,color:C.muted}}>{items.length} titre{items.length>1?"s":""}</p>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {["a_voir","en_cours","termine"].map(s=>(
+              <div key={s} style={{textAlign:"center",padding:"4px 8px",background:"rgba(255,255,255,0.03)",borderRadius:8}}>
+                <div style={{fontSize:16,fontWeight:800,color:STATUS[s].color}}>{counts[s]}</div>
+                <div style={{fontSize:10,color:C.muted}}>{STATUS[s].label}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:22}}>×</button>
+        </div>
+        <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filtrer…" style={{...IS,maxWidth:180,flex:1}}/>
+          <FBtn label="Tous" active={filterStatus==="all"} onClick={()=>setFilterStatus("all")}/>
+          <FBtn label="En cours" active={filterStatus==="en_cours"} color={C.warning} onClick={()=>setFilterStatus("en_cours")}/>
+          <FBtn label="Terminé" active={filterStatus==="termine"} color={C.success} onClick={()=>setFilterStatus("termine")}/>
+        </div>
+        <div style={{padding:16,maxHeight:"65vh",overflowY:"auto"}}>
+          {loading&&<p style={{textAlign:"center",color:C.muted}}>…</p>}
+          {!loading&&filtered.length===0&&<p style={{textAlign:"center",color:C.muted,paddingTop:30}}>Aucun titre.</p>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
+            {filtered.map(item=>{
+              const st=STATUS[item.status]||STATUS.a_voir;
+              return(
+                <div key={item.id} style={{background:C.card,borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                  <div style={{height:140,position:"relative",background:"rgba(255,255,255,0.03)"}}>
+                    {item.poster_url?<img src={item.poster_url} alt={item.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                      :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,opacity:0.1}}>🎬</div>}
+                    <div style={{position:"absolute",top:6,right:6,background:`${st.color}25`,borderRadius:99,padding:"2px 6px"}}>
+                      <span style={{fontSize:10,fontWeight:700,color:st.color}}>{st.label}</span>
+                    </div>
+                  </div>
+                  <div style={{padding:"8px 9px"}}>
+                    <p style={{margin:0,fontSize:12,color:C.text,fontWeight:600,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{item.title}</p>
+                    <p style={{margin:"3px 0 0",fontSize:11,color:C.muted}}>{CAT_SHORT[item.category]||item.category}</p>
+                    {item.rating>0&&<Stars value={item.rating} size={10}/>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Public Profile Modal ─────────────────────────────────────────────────────
 function PublicProfileModal({userId,currentUser,lang,onClose,viewerRole="user"}){
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
   const [modReason,setModReason]=useState("");
   const [modMsg,setModMsg]=useState("");
-  const myRole = viewerRole; // passed from parent who already has the correct role
+  const myRole = viewerRole;
+  const [viewList,setViewList]=useState(null); // {id,name}
+  const [viewWatchlog,setViewWatchlog]=useState(false);
 
   useEffect(()=>{
     api.getPublicProfile(userId).then(d=>{setData(d);setLoading(false);}).catch(()=>setLoading(false));
@@ -1043,6 +1175,17 @@ function PublicProfileModal({userId,currentUser,lang,onClose,viewerRole="user"})
 
           {data.website&&<a href={data.website} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.blue,textDecoration:"none"}}>🔗 {data.website}</a>}
 
+          {/* Journal link */}
+          <div onClick={()=>setViewWatchlog(true)}
+            style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer",transition:"border-color 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.gold}50`}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+            <span style={{fontSize:18}}>📖</span>
+            <span style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>Journal personnel</span>
+            <span style={{fontSize:12,color:C.muted}}>Voir les titres</span>
+            <span style={{fontSize:14,color:C.muted}}>›</span>
+          </div>
+
           {/* Moderation */}
           {canMod&&<div style={{background:"rgba(248,113,113,0.06)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:12,padding:"14px 16px"}}>
             <p style={{margin:"0 0 10px",fontSize:12,color:C.danger,textTransform:"uppercase",letterSpacing:1.2}}>🛡 Modération</p>
@@ -1086,6 +1229,9 @@ function PublicProfileModal({userId,currentUser,lang,onClose,viewerRole="user"})
           </p>
         </div>
       </div>
+      {/* Sub-modals */}
+      {viewList&&<UserListModal listId={viewList.id} listName={viewList.name} lang={lang} onClose={()=>setViewList(null)}/>}
+      {viewWatchlog&&<UserWatchlogModal userId={userId} username={data.username} lang={lang} onClose={()=>setViewWatchlog(false)}/>}
     </div>
   );
 }

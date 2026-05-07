@@ -77,6 +77,29 @@ async function getProfile(id) {
   return ok(data);
 }
 
+// GET /api/watchlog/user/:id — public watchlog of another user
+async function getPublicWatchlog(id) {
+  const { data } = await db.from("watchlog").select("*").eq("user_id", id).order("updated_at", { ascending: false });
+  return ok(data || []);
+}
+
+// GET /api/lists/user/:id — public lists of another user with their items
+async function getPublicLists(id) {
+  const { data: allLists } = await db.from("watchlists").select("*");
+  const userLists = (allLists || []).filter(l =>
+    l.is_public !== false && l.members?.some(m => m.id === id)
+  );
+  return ok(userLists);
+}
+
+// GET /api/lists/:id/public — public list items (no auth required check)
+async function getPublicListItems(listId) {
+  const { data: list } = await db.from("watchlists").select("is_public").eq("id", listId).single();
+  if (!list || list.is_public === false) return err("List is private", 403);
+  const { data } = await db.from("items").select("*").eq("watchlist_id", listId).order("created_at");
+  return ok(data || []);
+}
+
 // GET /api/profiles/:id/public — full public profile with stats + lists
 async function getPublicProfile(id) {
   const { data: profile } = await db.from("profiles").select("*").eq("id", id).single();
@@ -698,11 +721,16 @@ export const handler = async (event) => {
 
     // Profiles
     if (segments[0] === "profiles") {
-      if (method === "GET"  && segments[1] === "search")          return await searchUsers(user, query.q);
+      if (method === "GET"  && segments[1] === "search")               return await searchUsers(user, query.q);
       if (method === "GET"  && segments[1] && segments[2] === "public") return await getPublicProfile(segments[1]);
-      if (method === "GET"  && segments[1])                       return await getProfile(segments[1]);
-      if (method === "PUT"  && segments[1] === "me")              return await updateProfile(user, body);
+      if (method === "GET"  && segments[1])                            return await getProfile(segments[1]);
+      if (method === "PUT"  && segments[1] === "me")                   return await updateProfile(user, body);
     }
+
+    // Public user content
+    if (segments[0] === "watchlog" && segments[1] === "user" && segments[2]) return await getPublicWatchlog(segments[2]);
+    if (method === "GET" && segments[0] === "lists" && segments[1] === "user" && segments[2]) return await getPublicLists(segments[2]);
+    if (method === "GET" && segments[0] === "lists" && segments[1] && segments[2] === "public-items") return await getPublicListItems(segments[1]);
 
     // Moderation
     if (segments[0] === "mod") {

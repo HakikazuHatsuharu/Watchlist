@@ -2,57 +2,54 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  {
+    realtime: {
+      params: { eventsPerSecond: 10 }
+    }
+  }
 );
 
-export function subscribeToItems(listId, cb) {
-  const ch = supabase.channel(`items-${listId}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "items", filter: `watchlist_id=eq.${listId}` }, cb)
-    .subscribe();
+// ─── Debug helper ─────────────────────────────────────────────────────────────
+function makeCh(name, table, filter, event, cb) {
+  const config = { event, schema: "public", table };
+  if (filter) config.filter = filter;
+  const ch = supabase.channel(name)
+    .on("postgres_changes", config, (p) => {
+      cb(p.new || p);
+    })
+    .subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.warn(`[realtime] channel error on ${name}`);
+      }
+    });
   return () => supabase.removeChannel(ch);
 }
 
 export function subscribeToMessages(listId, cb) {
-  const ch = supabase.channel(`msgs-${listId}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `watchlist_id=eq.${listId}` }, (p) => cb(p.new))
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh(`msgs-${listId}`, "messages", `watchlist_id=eq.${listId}`, "INSERT", cb);
 }
 
 export function subscribeToGlobalChat(cb) {
-  const ch = supabase.channel("global-chat")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `watchlist_id=eq.__global__` }, (p) => cb(p.new))
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh("global-chat", "messages", `watchlist_id=eq.__global__`, "INSERT", cb);
 }
 
 export function subscribeToDMs(userId, cb) {
-  const ch = supabase.channel(`dm-${userId}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages", filter: `receiver_id=eq.${userId}` }, (p) => cb(p.new))
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh(`dm-${userId}`, "direct_messages", `receiver_id=eq.${userId}`, "INSERT", cb);
+}
+
+export function subscribeToItems(listId, cb) {
+  return makeCh(`items-${listId}`, "items", `watchlist_id=eq.${listId}`, "*", cb);
 }
 
 export function subscribeToLists(cb) {
-  const ch = supabase.channel("wl-changes")
-    .on("postgres_changes", { event: "*", schema: "public", table: "watchlists" }, cb)
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh("wl-changes", "watchlists", null, "*", cb);
 }
 
 export function subscribeToFriendships(userId, cb) {
-  const ch = supabase.channel(`friends-${userId}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, cb)
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh(`friends-${userId}`, "friendships", null, "*", cb);
 }
 
 export function subscribeToNotifications(userId, cb) {
-  const ch = supabase.channel(`notifs-${userId}`)
-    .on("postgres_changes", {
-      event: "INSERT", schema: "public", table: "notifications",
-      filter: `user_id=eq.${userId}`,
-    }, (p) => cb(p.new))
-    .subscribe();
-  return () => supabase.removeChannel(ch);
+  return makeCh(`notifs-${userId}`, "notifications", `user_id=eq.${userId}`, "INSERT", cb);
 }

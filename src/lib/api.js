@@ -128,3 +128,8 @@ export const getAdminStats = () => get("/admin/stats");
 
 // ─── Users directory ─────────────────────────────────────────────────────────
 export const getAllUsers = (q) => get("/profiles/search", { q: q||"" });
+
+// ─── Public user content ──────────────────────────────────────────────────────
+export const getPublicWatchlog   = (userId) => get(`/watchlog/user/${userId}`);
+export const getPublicUserLists  = (userId) => get(`/lists/user/${userId}`);
+export const getPublicListItems  = (listId) => get(`/lists/${listId}/public-items`);
