@@ -820,7 +820,7 @@ function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder
   const allMsgs=useMemo(()=>{
     const map=new Map();
     [...messages,...extra].forEach(m=>{if(m?.id) map.set(m.id,m);});
-    return [...map.values()].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+    return [...map.values()].sort((a,b)=>(new Date(a.created_at||0))-(new Date(b.created_at||0)));
   },[messages,extra]);
 
   // Realtime: accept incoming from subscription (already handled by parent via messages prop)
@@ -844,7 +844,7 @@ function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder
   };
   const groups=allMsgs.reduce((acc,msg)=>{
     const last=acc[acc.length-1];
-    if(last&&last.user_id===msg.user_id&&Date.parse(msg.created_at)-Date.parse(last.items[last.items.length-1].created_at)<120000) last.items.push(msg);
+    const tA=Date.parse(last.items[last.items.length-1].created_at)||0;const tB=Date.parse(msg.created_at)||Date.now();if(last&&last.user_id===msg.user_id&&tB-tA<120000) last.items.push(msg);
     else acc.push({user_id:msg.user_id,username:msg.username,items:[msg]});
     return acc;
   },[]);
@@ -873,7 +873,7 @@ function ChatBox({messages,loading,user,members,profiles,lang,onSend,placeholder
                   </div>
                 ))}
                 <span style={{fontSize:12,color:C.muted,marginTop:2}}>
-                  {new Date(grp.items[grp.items.length-1].created_at).toLocaleTimeString(lang==="fr"?"fr-FR":"en-US",{hour:"2-digit",minute:"2-digit"})}
+                  {(()=>{const d=new Date(grp.items[grp.items.length-1].created_at);return isNaN(d.getTime())?"":d.toLocaleTimeString(lang==="fr"?"fr-FR":"en-US",{hour:"2-digit",minute:"2-digit"});})()}
                 </span>
               </div>
             </div>
